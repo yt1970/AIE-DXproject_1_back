@@ -1,0 +1,20 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+extend-exclude = '''
+(
+  ^\.git
+)
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 88
+src_paths = ["."]
+known_first_party = ["app"]
+skip_gitignore = true
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["."]
+testpaths = ["tests"]
