@@ -2,17 +2,12 @@
 
 from __future__ import annotations
 
-from aws_cdk import (
-    CfnOutput,
-    Duration,
-    RemovalPolicy,
-    Stack,
-    aws_ec2 as ec2,
-    aws_ecr as ecr,
-    aws_ecs as ecs,
-    aws_ecs_patterns as ecs_patterns,
-    aws_logs as logs,
-)
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack
+from aws_cdk import aws_ec2 as ec2
+from aws_cdk import aws_ecr as ecr
+from aws_cdk import aws_ecs as ecs
+from aws_cdk import aws_ecs_patterns as ecs_patterns
+from aws_cdk import aws_logs as logs
 from constructs import Construct
 
 
