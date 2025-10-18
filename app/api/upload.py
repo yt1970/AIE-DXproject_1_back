@@ -31,7 +31,7 @@ router = APIRouter()
 # ----------------------------------------------------------------------
 
 # A. ファイルアップロードと非同期処理の開始
-@router.post("/comments/upload", response_model=UploadResponse)
+@router.post("/uploads", response_model=UploadResponse)
 async def upload_and_start_analysis(
     # `Annotated[...]`: Python 3.9+ の型ヒント機能。FastAPIはこれを見て引数の詳細を解釈します。
     # `File()`: この引数がファイルアップロードデータであることを示します。
@@ -105,6 +105,6 @@ async def upload_and_start_analysis(
     # これをクライアントに返すことで、後続のステータス確認で利用できるようにします。
     return UploadResponse(
         file_id=new_file_record.file_id,
-        status_url=f"/api/v1/analysis/{new_file_record.file_id}/status",
+        status_url=f"/api/v1/uploads/{new_file_record.file_id}/status",
         message="Upload successful. Analysis has been queued."
     )

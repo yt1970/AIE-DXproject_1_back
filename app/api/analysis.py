@@ -32,7 +32,7 @@ router = APIRouter()
 # ----------------------------------------------------------------------
 
 # B. 分析ステータスの確認
-@router.get("/analysis/{file_id}/status", response_model=AnalysisStatusResponse)
+@router.get("/uploads/{file_id}/status", response_model=AnalysisStatusResponse)
 def get_analysis_status(
     file_id: int,
     # `Depends(get_db)`: FastAPIの依存性注入システム。
