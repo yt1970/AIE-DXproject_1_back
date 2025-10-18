@@ -77,3 +77,5 @@ def get_analysis_status(
         total_comments=total_comments,
         processed_count=processed_count # DBから取得した処理済みコメント数
     )
+    
+    
