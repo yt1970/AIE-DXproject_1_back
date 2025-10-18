@@ -4,14 +4,14 @@
 from __future__ import annotations
 
 import os
-from functools import lru_cache
 from datetime import datetime
+from functools import lru_cache
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 # --- 分割したルーターをインポート ---
-from app.api import upload, analysis, comments
+from app.api import analysis, comments, upload
 
 
 # ----------------------------------------------------------------------
@@ -29,12 +29,15 @@ def get_app_settings() -> dict[str, str | bool]:
     }
 
 
+settings = get_app_settings()
+
+
 # ----------------------------------------------------------------------
 # アプリケーションファクトリ (テストの容易性のために関数化)
 # ----------------------------------------------------------------------
 def create_app() -> FastAPI:
     """Creates and configures the FastAPI application instance."""
-    config = get_app_settings()
+    config = settings
     
     app = FastAPI(
         title=config["title"], 

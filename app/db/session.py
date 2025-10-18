@@ -9,7 +9,13 @@
 # これにより、スレッドセーフなデータベース操作が可能になります。
 # ----------------------------------------------------------------------
 
+import logging
 import os
+
+DEFAULT_SQLITE_URL = "sqlite:///./app_dev.sqlite3"
+
+logger = logging.getLogger(__name__)
+
 from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -26,7 +32,11 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise ValueError("データベース接続URLが設定されていません。環境変数 'DATABASE_URL' を確認してください。")
+    DATABASE_URL = DEFAULT_SQLITE_URL
+    logger.warning(
+        "環境変数 'DATABASE_URL' が設定されていないため、SQLiteを使用します: %s",
+        DATABASE_URL,
+    )
 
 # ----------------------------------------------------------------------
 # 2. データベースエンジンの作成
@@ -35,7 +45,8 @@ if not DATABASE_URL:
 # create_engineは一度だけ呼び出され、アプリケーション全体で再利用されます。
 # `pool_pre_ping=True` は、接続プールから接続を取得する際に、
 # その接続がまだ有効か（例：DBサーバーから切断されていないか）をテストする設定です。
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_args)
 
 # ----------------------------------------------------------------------
 # 3. セッションファクトリの作成

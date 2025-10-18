@@ -7,14 +7,16 @@
 # 特定の講義に関連するコメントの分析結果を一覧で取得する機能などを担います。
 # ----------------------------------------------------------------------
 
+from typing import List
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import List
+
+from app.db import models
+from app.db.session import get_db
 
 # --- 内部モジュールのインポート ---
 from app.schemas.comment import CommentAnalysisSchema
-from app.db import models
-from app.db.session import get_db
 
 # ----------------------------------------------------------------------
 # ルーターの初期化

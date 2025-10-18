@@ -1,6 +1,15 @@
-from sqlalchemy import Column, Integer, String, Date, TIMESTAMP, UniqueConstraint, Text, ForeignKey
-from sqlalchemy.orm import relationship
+from sqlalchemy import (
+    TIMESTAMP,
+    Column,
+    Date,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 

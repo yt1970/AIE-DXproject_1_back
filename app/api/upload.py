@@ -12,14 +12,17 @@ import json
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
-from pydantic import ValidationError, parse_raw_as
+
+from app.db import models
+from app.db.session import get_db
 
 # --- 内部モジュールのインポート ---
 from app.schemas.comment import UploadRequestMetadata, UploadResponse
-from app.db import models
-from app.db.session import get_db
+
+metadata_adapter = TypeAdapter(UploadRequestMetadata)
 
 # ----------------------------------------------------------------------
 # ルーターの初期化
@@ -60,9 +63,8 @@ async def upload_and_start_analysis(
     
     # --- 1. メタデータのパースと検証 ---
     try:
-        # `parse_raw_as` を使い、JSON文字列をPydanticモデルに変換します。
-        # これにより、クライアントから送られてきたデータの型や構造が正しいか自動で検証されます。
-        metadata = parse_raw_as(UploadRequestMetadata, metadata_json)
+        # TypeAdapterを利用し、JSON文字列をPydanticモデルに変換して検証します。
+        metadata = metadata_adapter.validate_json(metadata_json)
     except (ValidationError, json.JSONDecodeError) as e:
         # パースや検証に失敗した場合は、クライアントの入力が不正であるため、
         # HTTP 422 Unprocessable Entity エラーを返します。

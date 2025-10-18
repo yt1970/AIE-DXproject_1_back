@@ -10,14 +10,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-# --- 内部モジュールのインポート ---
-# Pydanticスキーマ：APIのレスポンスボディの構造を定義
-from app.schemas.comment import AnalysisStatusResponse
 # データベースモデル：DBテーブルの構造を定義
 from app.db import models
+
 # データベースセッション管理：DB接続を取得するための依存性注入関数
 from app.db.session import get_db
 
+# --- 内部モジュールのインポート ---
+# Pydanticスキーマ：APIのレスポンスボディの構造を定義
+from app.schemas.comment import AnalysisStatusResponse
 
 # ----------------------------------------------------------------------
 # ルーターの初期化

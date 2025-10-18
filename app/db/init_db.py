@@ -15,6 +15,7 @@ import logging
 # `Base`は、すべてのDBモデルクラスが継承している基本クラスです。
 # `metadata`は、定義されたすべてのテーブルに関する情報を保持しています。
 from app.db.models import Base
+
 # `engine`は、データベースへの接続を管理するコアなインターフェースです。
 from app.db.session import engine
 
