@@ -25,11 +25,35 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 ## プロジェクト構造
 
 ```
-app.py             # FastAPIアプリケーションのエントリーポイント
-tests/
-  test_health.py   # 基本的なサービスヘルスチェック
-infra/             # AWS CDK によるインフラ定義
+.
+├── app.py
+├── tests/
+│   └── test_health.py
+├── infra/
+│   ├── app.py
+│   ├── README.md
+│   ├── requirements.txt
+│   ├── cdk.json
+│   ├── cdk.context.json
+│   ├── cdk.out/                # CDK synth 後に生成される一時成果物
+│   ├── stacks/
+│   │   ├── backend_stack.py
+│   │   └── github_oidc_role_stack.py
+│   └── tests/
+│       └── test_synth.py
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+├── requirements-dev.txt
+├── pyproject.toml
+├── .env.example
+└── .gitignore
 ```
+
+ローカル開発用の仮想環境 `.venv/` や CDK 実行時に生成される `infra/cdk.out/` などは Git 管理対象外です。
 
 ## コントリビューション
 
