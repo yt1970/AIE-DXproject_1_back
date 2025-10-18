@@ -40,13 +40,14 @@ jobs:
         run: pytest infra/tests
 
   publish-image:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AWS_DEPLOY_ROLE_ARN != ''
     needs: lint-and-test
     runs-on: ubuntu-latest
     env:
       ECR_REPOSITORY: aie-dxproject-backend
       AWS_REGION: ap-northeast-1
       IMAGE_TAG: ${{ github.sha }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
     permissions:
       id-token: write
       contents: read
@@ -58,7 +59,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -73,3 +74,12 @@ jobs:
           docker tag "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" "$REGISTRY/$ECR_REPOSITORY:latest"
           docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$REGISTRY/$ECR_REPOSITORY:latest"
+
+  publish-image-skipped:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AWS_DEPLOY_ROLE_ARN == ''
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notice missing deployment role secret
+        run: |
+          echo "AWS_DEPLOY_ROLE_ARN secret is not configured. Skipping Docker image publish step."
