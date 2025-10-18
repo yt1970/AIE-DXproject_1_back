@@ -40,7 +40,7 @@ jobs:
         run: pytest infra/tests
 
   publish-image:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AWS_DEPLOY_ROLE_ARN != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: lint-and-test
     runs-on: ubuntu-latest
     env:
@@ -56,17 +56,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check deployment role secret
+        if: env.AWS_DEPLOY_ROLE_ARN == ''
+        run: |
+          echo "AWS_DEPLOY_ROLE_ARN secret is not configured. Skipping Docker image publish step."
+          exit 0
+
       - name: Configure AWS credentials
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push image
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
@@ -74,12 +83,3 @@ jobs:
           docker tag "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" "$REGISTRY/$ECR_REPOSITORY:latest"
           docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$REGISTRY/$ECR_REPOSITORY:latest"
-
-  publish-image-skipped:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && secrets.AWS_DEPLOY_ROLE_ARN == ''
-    needs: lint-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - name: Notice missing deployment role secret
-        run: |
-          echo "AWS_DEPLOY_ROLE_ARN secret is not configured. Skipping Docker image publish step."
