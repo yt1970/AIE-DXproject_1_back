@@ -59,8 +59,7 @@ class AieDxprojectBackendStack(Stack):
         )
 
         use_sample_image = (
-            str(self.node.try_get_context("use_sample_image")).lower()
-            != "false"
+            str(self.node.try_get_context("use_sample_image")).lower() != "false"
         )
         image_tag = self.node.try_get_context("image_tag") or "latest"
 
