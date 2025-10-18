@@ -23,17 +23,18 @@ from app.db.session import engine
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
 def init_db() -> None:
     """
     データベース内のテーブルを初期化（作成）します。
     """
     logger.info("データベースのテーブルを作成しています... (存在しないテーブルのみ)")
-    
+
     # `Base.metadata.create_all()` は、Baseを継承しているすべてのモデルクラスを検出し、
     # それに対応するテーブルがデータベースに存在しない場合にのみ、テーブルを作成します。
     # `bind=engine` は、どのデータベースに対して操作を行うかを指定します。
     Base.metadata.create_all(bind=engine)
-    
+
     logger.info("テーブルの作成が完了しました。")
 
 

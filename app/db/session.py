@@ -58,6 +58,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_ar
 # - bind=engine: このセッションファクトリが上記のエンジンを使用することを示します。
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 # ----------------------------------------------------------------------
 # 4. 依存性注入用のDBセッション提供関数
 # ----------------------------------------------------------------------

@@ -33,6 +33,7 @@ router = APIRouter()
 # エンドポイントの定義
 # ----------------------------------------------------------------------
 
+
 # A. ファイルアップロードと非同期処理の開始
 @router.post("/uploads", response_model=UploadResponse)
 async def upload_and_start_analysis(
@@ -43,9 +44,9 @@ async def upload_and_start_analysis(
     # メタデータはJSON文字列として送信されることを想定しています。
     metadata_json: Annotated[str, Form(alias="metadata")],
     # `Depends(get_db)`: データベースセッションを取得します。
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
-    '''
+    """
     クライアントからアップロードされたファイルとメタデータを受け取り、DBに記録します。
 
     - **この修正の目的**:
@@ -59,8 +60,8 @@ async def upload_and_start_analysis(
       3. パースしたメタデータとファイル情報を使って `UploadedFile` モデルを作成します。
       4. 作成したモデルをDBセッションに追加し、コミットしてデータベースに保存します。
       5. DBによって自動採番された `file_id` を取得し、クライアントに返却します。
-    '''
-    
+    """
+
     # --- 1. メタデータのパースと検証 ---
     try:
         # TypeAdapterを利用し、JSON文字列をPydanticモデルに変換して検証します。
@@ -85,7 +86,7 @@ async def upload_and_start_analysis(
         lecture_number=metadata.lecture_number,
         status="PENDING",  # アップロード直後のステータスは「処理待ち」
         s3_key=current_s3_key,
-        upload_timestamp=datetime.utcnow() # 現在のUTC時刻
+        upload_timestamp=datetime.utcnow(),  # 現在のUTC時刻
     )
 
     # --- 4. データベースへの保存処理 ---
@@ -99,7 +100,7 @@ async def upload_and_start_analysis(
         db.refresh(new_file_record)
     except Exception as e:
         # ユニークキー制約違反など、DBへの書き込み中にエラーが発生した場合
-        db.rollback() # トランザクションをロールバック（変更を取り消し）します。
+        db.rollback()  # トランザクションをロールバック（変更を取り消し）します。
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
     # --- 5. 成功レスポンスを返却 ---
@@ -108,5 +109,5 @@ async def upload_and_start_analysis(
     return UploadResponse(
         file_id=new_file_record.file_id,
         status_url=f"/api/v1/uploads/{new_file_record.file_id}/status",
-        message="Upload successful. Analysis has been queued."
+        message="Upload successful. Analysis has been queued.",
     )

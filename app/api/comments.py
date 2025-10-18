@@ -27,13 +27,13 @@ router = APIRouter()
 # エンドポイントの定義
 # ----------------------------------------------------------------------
 
+
 # C. 分析結果の取得
-@router.get("/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema])
+@router.get(
+    "/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema]
+)
 def get_analysis_results(
-    course_name: str,
-    limit: int = 100,
-    skip: int = 0,
-    db: Session = Depends(get_db)
+    course_name: str, limit: int = 100, skip: int = 0, db: Session = Depends(get_db)
 ):
     """
     指定された講義名(`course_name`)に関連する分析済みコメントの一覧を取得します。

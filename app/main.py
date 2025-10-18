@@ -38,13 +38,13 @@ settings = get_app_settings()
 def create_app() -> FastAPI:
     """Creates and configures the FastAPI application instance."""
     config = settings
-    
+
     app = FastAPI(
-        title=config["title"], 
+        title=config["title"],
         debug=config["debug"],
         version="1.0.0",
     )
-    
+
     # ------------------------------------------------------------------
     # 1. 起動時のイベントハンドラ (DB接続の初期化などを想定)
     # ------------------------------------------------------------------
@@ -54,7 +54,6 @@ def create_app() -> FastAPI:
         print(f"Application '{app.title}' starting up. ENV: {config['env']}")
         # 例: await initialize_database_connection()
 
-
     # ------------------------------------------------------------------
     # 2. ヘルスチェックエンドポイント
     # ------------------------------------------------------------------
@@ -63,14 +62,15 @@ def create_app() -> FastAPI:
         """
         システムの稼働状況を確認するためのヘルスチェックエンドポイント。
         """
-        return JSONResponse(content={
-            "status": "ok",
-            "timestamp": datetime.now().isoformat(),
-            "app_name": app.title,
-            "environment": config["env"],
-            # 実際にはDB接続やCeleryキューの状態チェックを追加
-        })
-
+        return JSONResponse(
+            content={
+                "status": "ok",
+                "timestamp": datetime.now().isoformat(),
+                "app_name": app.title,
+                "environment": config["env"],
+                # 実際にはDB接続やCeleryキューの状態チェックを追加
+            }
+        )
 
     # ------------------------------------------------------------------
     # 3. ルーターの登録
