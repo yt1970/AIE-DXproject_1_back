@@ -47,6 +47,7 @@ jobs:
       ECR_REPOSITORY: aie-dxproject-backend
       AWS_REGION: ap-northeast-1
       IMAGE_TAG: ${{ github.sha }}
+      AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
     permissions:
       id-token: write
       contents: read
@@ -55,17 +56,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check deployment role secret
+        if: env.AWS_DEPLOY_ROLE_ARN == ''
+        run: |
+          echo "AWS_DEPLOY_ROLE_ARN secret is not configured. Skipping Docker image publish step."
+          exit 0
+
       - name: Configure AWS credentials
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push image
+        if: env.AWS_DEPLOY_ROLE_ARN != ''
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |

@@ -10,7 +10,6 @@ import aws_cdk as cdk
 from infra.stacks.backend_stack import AieDxprojectBackendStack
 from infra.stacks.github_oidc_role_stack import GithubOidcRoleStack
 
-
 app = cdk.App()
 
 account = app.node.try_get_context("account") or os.getenv("CDK_DEFAULT_ACCOUNT")

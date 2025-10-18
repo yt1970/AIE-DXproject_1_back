@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from aws_cdk import (
-    CfnOutput,
-    Stack,
-    aws_iam as iam,
-)
+from aws_cdk import CfnOutput, Stack
+from aws_cdk import aws_iam as iam
 from constructs import Construct
 
 
