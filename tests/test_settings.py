@@ -51,7 +51,9 @@ def test_aws_credentials_projection(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.aws_credentials == expected
 
 
-def test_storage_settings_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_storage_settings_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     uploads_dir = tmp_path / "uploads"
     monkeypatch.setenv("UPLOAD_BACKEND", "LOCAL")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(uploads_dir))

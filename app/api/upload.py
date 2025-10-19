@@ -81,7 +81,9 @@ async def upload_and_run_analysis_sync(
     try:
         content_bytes = await file.read()
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Failed to read uploaded file: {exc}")
+        raise HTTPException(
+            status_code=400, detail=f"Failed to read uploaded file: {exc}"
+        )
 
     if not content_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
@@ -89,9 +91,7 @@ async def upload_and_run_analysis_sync(
     try:
         content_text = content_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
-        raise HTTPException(
-            status_code=400, detail=f"CSV must be UTF-8 encoded: {exc}"
-        )
+        raise HTTPException(status_code=400, detail=f"CSV must be UTF-8 encoded: {exc}")
 
     csv_stream = io.StringIO(content_text)
     csv_reader = csv.DictReader(csv_stream)
@@ -118,7 +118,9 @@ async def upload_and_run_analysis_sync(
         )
     except StorageError as exc:
         logger.exception("Failed to persist uploaded file.")
-        raise HTTPException(status_code=500, detail="Failed to persist uploaded file.") from exc
+        raise HTTPException(
+            status_code=500, detail="Failed to persist uploaded file."
+        ) from exc
 
     # --- 4. UploadedFileレコードの作成 ---
     new_file_record = models.UploadedFile(
@@ -229,7 +231,9 @@ async def upload_and_run_analysis_sync(
 
 def _build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:
     course = _slugify(metadata.course_name)
-    lecture_segment = f"{metadata.lecture_date.isoformat()}-lecture-{metadata.lecture_number}"
+    lecture_segment = (
+        f"{metadata.lecture_date.isoformat()}-lecture-{metadata.lecture_number}"
+    )
     safe_filename = _slugify(filename or "uploaded.csv", allow_period=True)
     return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))
 

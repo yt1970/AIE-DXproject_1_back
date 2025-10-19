@@ -21,7 +21,9 @@ def reset_storage_cache() -> None:
     settings_module.get_settings.cache_clear()
 
 
-def test_local_storage_saves_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_local_storage_saves_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("UPLOAD_BACKEND", "local")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(tmp_path))
 

@@ -104,7 +104,8 @@ class StorageSettings(BaseSettings):
         backend = (self.backend or "local").strip().lower()
         if backend not in {"local", "s3"}:
             logger.warning(
-                "Unsupported upload backend '%s'; falling back to 'local'.", self.backend
+                "Unsupported upload backend '%s'; falling back to 'local'.",
+                self.backend,
             )
             backend = "local"
         object.__setattr__(self, "backend", backend)

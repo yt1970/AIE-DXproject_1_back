@@ -87,9 +87,7 @@ class S3StorageClient(StorageClient):
         content_type: Optional[str] = None,
     ) -> str:
         key = "/".join(
-            part
-            for part in (self.base_prefix, _normalize_key(relative_path))
-            if part
+            part for part in (self.base_prefix, _normalize_key(relative_path)) if part
         )
         try:
             extra_args = {"ContentType": content_type} if content_type else None
@@ -97,7 +95,9 @@ class S3StorageClient(StorageClient):
                 Bucket=self.bucket, Key=key, Body=data, **(extra_args or {})
             )
         except (BotoCoreError, ClientError) as exc:
-            logger.exception("Failed to upload file to S3: bucket=%s key=%s", self.bucket, key)
+            logger.exception(
+                "Failed to upload file to S3: bucket=%s key=%s", self.bucket, key
+            )
             raise StorageError(f"Failed to upload file to S3: {exc}") from exc
 
         return f"s3://{self.bucket}/{key}"

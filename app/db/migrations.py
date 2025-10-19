@@ -86,8 +86,6 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN total_rows INTEGER")
 
     if "processed_rows" not in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_file ADD COLUMN processed_rows INTEGER"
-        )
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN processed_rows INTEGER")
 
     return statements
