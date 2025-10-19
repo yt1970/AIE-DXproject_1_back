@@ -81,7 +81,9 @@ class LLMClientConfig(BaseModel):
     )
     model: Optional[str] = Field(default=None, description="使用するモデル名")
     api_key: Optional[str] = Field(default=None, description="APIキー")
-    api_version: Optional[str] = Field(default=None, description="APIバージョン (Azure向け)")
+    api_version: Optional[str] = Field(
+        default=None, description="APIバージョン (Azure向け)"
+    )
     organization: Optional[str] = Field(
         default=None, description="OpenAI組織IDなど、必要であれば設定"
     )
@@ -165,9 +167,7 @@ class LLMClient:
         try:
             result = LLMAnalysisResult.model_validate(normalized_payload)
         except ValidationError as exc:
-            warning = (
-                "Failed to validate LLM response against schema; falling back to raw payload."
-            )
+            warning = "Failed to validate LLM response against schema; falling back to raw payload."
             logger.warning("%s Payload=%s Error=%s", warning, structured_payload, exc)
             result = LLMAnalysisResult(
                 raw=structured_payload,
@@ -277,9 +277,14 @@ class LLMClient:
         if content is None and isinstance(first_choice.get("content"), list):
             # OpenAI responses with content as a list of parts
             content_parts = first_choice["content"]
-            content = "".join(
-                part.get("text", "") for part in content_parts if isinstance(part, dict)
-            ).strip() or None
+            content = (
+                "".join(
+                    part.get("text", "")
+                    for part in content_parts
+                    if isinstance(part, dict)
+                ).strip()
+                or None
+            )
 
         if content is None and isinstance(first_choice.get("content"), str):
             content = first_choice["content"]
@@ -414,7 +419,9 @@ def build_default_llm_config() -> LLMClientConfig:
     try:
         timeout_seconds = float(timeout_env) if timeout_env else 15.0
     except ValueError:
-        logger.warning("Invalid LLM_TIMEOUT_SECONDS value '%s'; using default.", timeout_env)
+        logger.warning(
+            "Invalid LLM_TIMEOUT_SECONDS value '%s'; using default.", timeout_env
+        )
         timeout_seconds = 15.0
 
     config = LLMClientConfig(

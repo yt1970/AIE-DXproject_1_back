@@ -28,7 +28,9 @@ def apply_migrations(engine: Engine) -> None:
 
     statements = _build_comment_migrations(existing_columns)
     if not statements:
-        logger.debug("LLM columns already present on 'comment' table; no migration run.")
+        logger.debug(
+            "LLM columns already present on 'comment' table; no migration run."
+        )
         return
 
     with engine.begin() as connection:
@@ -44,7 +46,9 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     statements: List[str] = []
 
     if "llm_importance_level" not in existing_columns:
-        statements.append("ALTER TABLE comment ADD COLUMN llm_importance_level VARCHAR(20)")
+        statements.append(
+            "ALTER TABLE comment ADD COLUMN llm_importance_level VARCHAR(20)"
+        )
 
     if "llm_importance_score" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_importance_score FLOAT")

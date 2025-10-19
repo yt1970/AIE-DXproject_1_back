@@ -98,9 +98,7 @@ def analyze_comment(comment_text: str) -> CommentAnalysisResult:
             warnings=[warning],
         )
 
-    importance_score = scoring.calculate_importance_score(
-        comment_text, llm_structured
-    )
+    importance_score = scoring.calculate_importance_score(comment_text, llm_structured)
     category, sentiment = aggregation.classify_comment(comment_text, llm_structured)
     is_safe = safety.is_comment_safe(comment_text, llm_structured)
     risk_level = llm_structured.risk_level or ("high" if not is_safe else "none")

@@ -88,7 +88,9 @@ async def upload_and_run_analysis_sync(
         db.refresh(new_file_record)
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error on creating file record: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Database error on creating file record: {e}"
+        )
 
     # --- 3. CSVファイルを読み込み、コメントを1行ずつ分析・保存 ---
     try:
@@ -104,11 +106,15 @@ async def upload_and_run_analysis_sync(
                 continue  # 必須データがない行はスキップ
 
             # --- 5. Studentレコードの存在確認と作成（なければ） ---
-            student = db.query(models.Student).filter(models.Student.student_id == student_id).first()
+            student = (
+                db.query(models.Student)
+                .filter(models.Student.student_id == student_id)
+                .first()
+            )
             if not student:
                 student = models.Student(
                     student_id=student_id,
-                    email_address=f"{student_id}@example.com", # 仮のメールアドレス
+                    email_address=f"{student_id}@example.com",  # 仮のメールアドレス
                     created_at=datetime.utcnow(),
                 )
                 db.add(student)
@@ -126,7 +132,7 @@ async def upload_and_run_analysis_sync(
             # --- 7. Commentレコードの作成 ---
             new_comment = models.Comment(
                 file_id=new_file_record.file_id,
-                student_id=student_id, # CSVから取得したIDを使用
+                student_id=student_id,  # CSVから取得したIDを使用
                 comment_learned_raw=comment_text,
                 llm_category=analysis_result.category,
                 llm_sentiment=analysis_result.sentiment,
@@ -150,7 +156,9 @@ async def upload_and_run_analysis_sync(
         new_file_record.status = "FAILED"
         db.add(new_file_record)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Error during analysis process: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Error during analysis process: {e}"
+        )
 
     # --- 10. 成功レスポンスを返却 ---
     return UploadResponse(
