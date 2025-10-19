@@ -1,33 +1,23 @@
-# app/analysis/safety.py
+from __future__ import annotations
 
-from typing import Any, Dict
+from app.services import LLMAnalysisResult
 
 # NGワードリスト (例)
-# TODO: プロジェクトに合わせてNGワードを定義してください
 NG_WORDS = ["不適切", "誹謗中傷", "差別"]
 
-def is_comment_safe(comment_text: str, llm_output: Dict[str, Any]) -> bool:
+
+def is_comment_safe(comment_text: str, llm_output: LLMAnalysisResult) -> bool:
     """
-    LLMの出力やNGワードリストに基づき、コメントが安全かどうかを判定する
-
-    Args:
-        comment_text: コメント文字列
-        llm_output: LLMからの分析結果
-
-    Returns:
-        安全な場合はTrue, 危険な場合はFalse
+    LLMの出力やNGワードリストに基づき、コメントが安全かどうかを判定する。
     """
-    # --- ここからロジックを実装してください ---
-
-    # 例1: NGワードが含まれていないかチェック
     if any(word in comment_text for word in NG_WORDS):
         return False
 
-    # 例2: LLMが不適切と判定していないかチェック
-    # llm_outputに 'is_safe' のようなキーで判定結果が格納されていると仮定
-    if not llm_output.get("is_safe", True):
+    if llm_output.is_safe is not None and llm_output.is_safe is False:
         return False
 
-    # --- ここまで ---
+    risk_level = (llm_output.risk_level or "").lower()
+    if risk_level in {"high", "critical", "severe", "危険"}:
+        return False
 
-    return True # 上記のチェックをすべてパスした場合
+    return True

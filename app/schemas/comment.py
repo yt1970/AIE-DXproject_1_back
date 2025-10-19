@@ -33,10 +33,14 @@ class AnalysisStatusResponse(BaseModel):
 # 📝 (出力) 分析結果（コメント一覧）のスキーマ
 class CommentAnalysisSchema(BaseModel):
     comment_learned_raw: str
-    comment_improvements_raw: str
-    llm_category: str
-    llm_summary: str
-    score_satisfaction_overall: Optional[int]
+    comment_improvements_raw: Optional[str] = None
+    llm_category: Optional[str] = None
+    llm_sentiment: Optional[str] = None
+    llm_summary: Optional[str] = None
+    llm_importance_level: Optional[str] = None
+    llm_importance_score: Optional[float] = None
+    llm_risk_level: Optional[str] = None
+    score_satisfaction_overall: Optional[int] = None
 
     class Config:
         # DBモデルからの変換を許可 (SQLAlchemy ORMとの連携用)

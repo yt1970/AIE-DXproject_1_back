@@ -22,6 +22,20 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 - 変更をプッシュする前に `pytest`（コンテナ内または仮想環境内）を実行してテストを実行してください。
 - インフラの変更は `infra/README.md` を参照し、AWS CDK を使って管理してください。
 
+## LLM 連携設定
+
+コメント分析には任意のLLM APIを利用できます。`LLM_PROVIDER` を `mock`（デフォルト）、`openai`、`azure_openai`、`generic` から選択し、必要に応じて以下の環境変数を `.env` へ設定してください。
+
+- `LLM_API_BASE`: APIエンドポイントのベースURL（`mock`以外では必須）
+- `LLM_MODEL`: 使用するモデル名
+- `LLM_API_KEY`: 認証に使用するAPIキー（必要な場合）
+- `LLM_API_VERSION`: Azure OpenAI利用時のAPIバージョン
+- `LLM_TIMEOUT_SECONDS`: タイムアウト秒数（デフォルト15秒）
+- `LLM_REQUEST_TEMPLATE`: LLMに与えるプロンプトをカスタマイズしたい場合に設定
+- `LLM_EXTRA_HEADERS`: 追加ヘッダーをJSON文字列で指定
+
+`mock` モードでは外部通信を行わず、テスト用の固定レスポンスを返します。`openai` / `azure_openai` を利用する場合は、必ず `LLM_API_BASE` や認証情報を設定してください。また、本リリースで `comment` テーブルに `llm_importance_level` / `llm_importance_score` / `llm_risk_level` カラムを追加したため、既存DBを利用する場合はマイグレーションを適用する必要があります。アプリケーション起動時に不足している列は自動で `ALTER TABLE` により追加されます。
+
 ## プロジェクト構造
 
 ```
@@ -30,7 +44,9 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 │   ├── __init__.py          # app, create_app を公開
 │   └── main.py              # FastAPI本体とルート定義
 ├── tests/                   # アプリ用ユニットテスト
-│   └── test_health.py       # ヘルスチェックエンドポイントのテスト
+│   ├── test_health.py       # ヘルスチェックエンドポイントのテスト
+│   ├── test_llm_client.py   # LLMクライアントのテスト
+│   └── test_migrations.py   # マイグレーションテスト
 ├── infra/                   # AWS CDK によるインフラコード
 │   ├── app.py               # CDKエントリーポイント
 │   ├── README.md            # インフラ運用手順

@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 
 # --- 分割したルーターをインポート ---
 from app.api import analysis, comments, upload
+from app.db.migrations import apply_migrations
+from app.db.session import engine
 
 
 # ----------------------------------------------------------------------
@@ -53,6 +55,7 @@ def create_app() -> FastAPI:
         # 実際にはここでDB接続やCeleryワーカーの初期設定を行う
         print(f"Application '{app.title}' starting up. ENV: {config['env']}")
         # 例: await initialize_database_connection()
+        apply_migrations(engine)
 
     # ------------------------------------------------------------------
     # 2. ヘルスチェックエンドポイント

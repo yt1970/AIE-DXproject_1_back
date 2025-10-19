@@ -2,6 +2,7 @@ from sqlalchemy import (
     TIMESTAMP,
     Column,
     Date,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -79,6 +80,9 @@ class Comment(Base):
     llm_category = Column(String(50))
     llm_sentiment = Column(String(20))
     llm_summary = Column(Text)
+    llm_importance_level = Column(String(20))
+    llm_importance_score = Column(Float)
+    llm_risk_level = Column(String(20))
     processed_at = Column(TIMESTAMP)  # LLM処理完了日時
 
     # リレーションの定義

@@ -11,6 +11,7 @@
 import csv
 import io
 import json
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -25,6 +26,7 @@ from app.db.session import get_db
 from app.schemas.comment import UploadRequestMetadata, UploadResponse
 
 metadata_adapter = TypeAdapter(UploadRequestMetadata)
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
 # ルーターの初期化
@@ -114,6 +116,13 @@ async def upload_and_run_analysis_sync(
             # --- 6. 分析の実行 ---
             analysis_result = analyze_comment(comment_text)
 
+            if analysis_result.warnings:
+                logger.warning(
+                    "LLM warnings for student_id=%s: %s",
+                    student_id,
+                    "; ".join(analysis_result.warnings),
+                )
+
             # --- 7. Commentレコードの作成 ---
             new_comment = models.Comment(
                 file_id=new_file_record.file_id,
@@ -121,6 +130,10 @@ async def upload_and_run_analysis_sync(
                 comment_learned_raw=comment_text,
                 llm_category=analysis_result.category,
                 llm_sentiment=analysis_result.sentiment,
+                llm_summary=analysis_result.summary,
+                llm_importance_level=analysis_result.importance_level,
+                llm_importance_score=analysis_result.importance_score,
+                llm_risk_level=analysis_result.risk_level,
                 processed_at=datetime.utcnow(),
             )
             db.add(new_comment)
