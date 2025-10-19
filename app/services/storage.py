@@ -47,10 +47,11 @@ class LocalStorageClient(StorageClient):
         data: bytes,
         content_type: Optional[str] = None,
     ) -> str:
-        safe_path = _safe_join(self.base_directory, relative_path)
+        normalized_key = _normalize_key(relative_path)
+        safe_path = _safe_join(self.base_directory, normalized_key)
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         safe_path.write_bytes(data)
-        return str(safe_path)
+        return f"local://{normalized_key}"
 
 
 class S3StorageClient(StorageClient):

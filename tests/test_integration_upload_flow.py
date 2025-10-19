@@ -71,7 +71,12 @@ def test_upload_status_and_comments_flow(
         "lecture_date": "2024-05-01",
         "lecture_number": 1,
     }
-    csv_content = "student_id,comment\nS001,Great session!\nS002,Needs more examples.\n"
+    csv_content = (
+        "student_id , comment\n"
+        "S001,Great session!\n"
+        ",Missing student id\n"
+        "S002,Needs more examples.\n"
+    )
 
     response = client.post(
         "/api/v1/uploads",
@@ -113,3 +118,29 @@ def test_upload_status_and_comments_flow(
         assert comment["llm_importance_score"] == 0.0
         assert comment["llm_risk_level"] == "none"
         assert comment["llm_summary"] == comment["comment_learned_raw"]
+
+
+def test_upload_rejects_duplicate_headers(integration_client: TestClient) -> None:
+    client = integration_client
+
+    metadata = {
+        "course_name": "IntegrationCourse",
+        "lecture_date": "2024-05-01",
+        "lecture_number": 2,
+    }
+    csv_content = "student_id, student_id\nS001,Duplicate header test\n"
+
+    response = client.post(
+        "/api/v1/uploads",
+        data={"metadata": json.dumps(metadata)},
+        files={
+            "file": (
+                "duplicate.csv",
+                csv_content.encode("utf-8"),
+                "text/csv",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert "duplicate column names" in response.json()["detail"]

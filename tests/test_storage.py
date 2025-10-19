@@ -34,10 +34,11 @@ def test_local_storage_saves_file(
         content_type="text/plain",
     )
 
-    saved_path = Path(location)
+    assert location == "local://nested/file.txt"
+
+    saved_path = tmp_path / Path("nested") / "file.txt"
     assert saved_path.exists()
     assert saved_path.read_bytes() == b"hello storage"
-    assert saved_path.samefile(tmp_path / "nested" / "file.txt")
 
 
 def test_s3_backend_requires_bucket(monkeypatch: pytest.MonkeyPatch) -> None:

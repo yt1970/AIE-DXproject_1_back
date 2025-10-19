@@ -99,13 +99,28 @@ async def upload_and_run_analysis_sync(
     if not csv_reader.fieldnames:
         raise HTTPException(status_code=400, detail="CSV header row is missing.")
 
-    normalized_headers = {header.strip() for header in csv_reader.fieldnames if header}
-    missing_columns = REQUIRED_COLUMNS - normalized_headers
+    normalized_fieldnames = [header.strip() for header in csv_reader.fieldnames]
+
+    if any(not header for header in normalized_fieldnames):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV header contains an empty column name.",
+        )
+
+    if len(set(normalized_fieldnames)) != len(normalized_fieldnames):
+        raise HTTPException(
+            status_code=400,
+            detail="CSV header contains duplicate column names after normalization.",
+        )
+
+    missing_columns = REQUIRED_COLUMNS - set(normalized_fieldnames)
     if missing_columns:
         raise HTTPException(
             status_code=400,
             detail=f"CSV is missing required columns: {', '.join(sorted(missing_columns))}",
         )
+
+    csv_reader.fieldnames = normalized_fieldnames
 
     # --- 3. ストレージへファイルを保存 ---
     storage_client = get_storage_client()
@@ -154,11 +169,10 @@ async def upload_and_run_analysis_sync(
             student_id = _normalize_cell(row.get("student_id"))
             comment_text = _normalize_cell(row.get("comment"))
 
-            if comment_text:
-                total_comments += 1
-
             if not student_id or not comment_text:
                 continue  # 必須データがない行はスキップ
+
+            total_comments += 1
 
             processed_comments += 1
 
