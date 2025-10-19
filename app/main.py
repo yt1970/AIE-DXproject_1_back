@@ -3,35 +3,18 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime
-from functools import lru_cache
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-# --- 分割したルーターをインポート ---
+# --- 分割したルーターと設定関連をインポート ---
 from app.api import analysis, comments, upload
+from app.core.settings import get_settings
 from app.db.migrations import apply_migrations
 from app.db.session import engine
 
-
-# ----------------------------------------------------------------------
-# 設定の読み込み (lru_cacheで一度だけ読み込む)
-# ----------------------------------------------------------------------
-# 環境変数を管理するPydantic Settingsモデルを想定したダミー
-@lru_cache
-def get_app_settings() -> dict[str, str | bool]:
-    """Load application configuration from environment variables."""
-    # .env ファイルからロードされる値を想定
-    return {
-        "env": os.getenv("APP_ENV", "development"),
-        "title": os.getenv("API_TITLE", "AIE-DXproject Backend"),
-        "debug": os.getenv("API_DEBUG", "False").lower() == "true",
-    }
-
-
-settings = get_app_settings()
+settings = get_settings()
 
 
 # ----------------------------------------------------------------------
@@ -42,8 +25,8 @@ def create_app() -> FastAPI:
     config = settings
 
     app = FastAPI(
-        title=config["title"],
-        debug=config["debug"],
+        title=config.title,
+        debug=config.debug,
         version="1.0.0",
     )
 
@@ -53,7 +36,7 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     async def startup_event():
         # 実際にはここでDB接続やCeleryワーカーの初期設定を行う
-        print(f"Application '{app.title}' starting up. ENV: {config['env']}")
+        print(f"Application '{app.title}' starting up. ENV: {config.env}")
         # 例: await initialize_database_connection()
         apply_migrations(engine)
 
@@ -70,7 +53,7 @@ def create_app() -> FastAPI:
                 "status": "ok",
                 "timestamp": datetime.now().isoformat(),
                 "app_name": app.title,
-                "environment": config["env"],
+                "environment": config.env,
                 # 実際にはDB接続やCeleryキューの状態チェックを追加
             }
         )

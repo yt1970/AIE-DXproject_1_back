@@ -18,19 +18,28 @@ def apply_migrations(engine: Engine) -> None:
     inspector = inspect(engine)
     table_names: Sequence[str] = inspector.get_table_names()
 
-    if "comment" not in table_names:
+    statements: List[str] = []
+
+    if "comment" in table_names:
+        comment_columns: Set[str] = {
+            column["name"] for column in inspector.get_columns("comment")
+        }
+        statements.extend(_build_comment_migrations(comment_columns))
+    else:
         logger.info("Table 'comment' not found; skipping LLM column migration.")
-        return
 
-    existing_columns: Set[str] = {
-        column["name"] for column in inspector.get_columns("comment")
-    }
-
-    statements = _build_comment_migrations(existing_columns)
-    if not statements:
-        logger.debug(
-            "LLM columns already present on 'comment' table; no migration run."
+    if "uploaded_file" in table_names:
+        uploaded_columns: Set[str] = {
+            column["name"] for column in inspector.get_columns("uploaded_file")
+        }
+        statements.extend(_build_uploaded_file_migrations(uploaded_columns))
+    else:
+        logger.info(
+            "Table 'uploaded_file' not found; skipping storage column migration."
         )
+
+    if not statements:
+        logger.debug("No schema migrations required.")
         return
 
     with engine.begin() as connection:
@@ -38,7 +47,7 @@ def apply_migrations(engine: Engine) -> None:
             logger.info("Applying migration: %s", statement)
             connection.execute(text(statement))
 
-    logger.info("Applied %d migration statements on 'comment' table.", len(statements))
+    logger.info("Applied %d migration statements.", len(statements))
 
 
 def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
@@ -55,5 +64,30 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
 
     if "llm_risk_level" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_risk_level VARCHAR(20)")
+
+    return statements
+
+
+def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
+    """Build ALTER TABLE statements for uploaded_file table."""
+    statements: List[str] = []
+
+    if "original_filename" not in existing_columns:
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN original_filename VARCHAR(255)"
+        )
+
+    if "content_type" not in existing_columns:
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN content_type VARCHAR(100)"
+        )
+
+    if "total_rows" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN total_rows INTEGER")
+
+    if "processed_rows" not in existing_columns:
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN processed_rows INTEGER"
+        )
 
     return statements

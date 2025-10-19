@@ -46,6 +46,10 @@ class UploadedFile(Base):
     status = Column(String(20), nullable=False)  # PENDING, COMPLETED, FAILED
     s3_key = Column(String(512))  # ExcelファイルのS3パス
     upload_timestamp = Column(TIMESTAMP, nullable=False)
+    original_filename = Column(String(255))
+    content_type = Column(String(100))
+    total_rows = Column(Integer)
+    processed_rows = Column(Integer)
 
     # 複合ユニーク制約の定義 (これで重複登録を防ぐ)
     __table_args__ = (

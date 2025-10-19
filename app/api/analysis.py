@@ -72,10 +72,14 @@ def get_analysis_status(
     # `.filter(models.Comment.file_id == file_id)`: `file_id`が一致するコメントを絞り込みます。
     # `.count()`: 条件に一致したレコードの総数をカウントします。
     # (注：ここではtotal_commentsは仮で固定値を入れていますが、将来的にはExcelから読み込んだ総数などを保持する想定)
-    processed_count = (
-        db.query(models.Comment).filter(models.Comment.file_id == file_id).count()
-    )
-    total_comments = 20000  # 仮の総コメント数
+    processed_count = uploaded_file.processed_rows
+    if processed_count is None:
+        processed_count = (
+            db.query(models.Comment).filter(models.Comment.file_id == file_id).count()
+        )
+    total_comments = uploaded_file.total_rows
+    if total_comments is None:
+        total_comments = processed_count
 
     # --- 4. レスポンスを返却 ---
     # 取得した情報を使って、レスポンス用のPydanticモデルを構築し、返却します。

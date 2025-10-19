@@ -22,6 +22,27 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 - 変更をプッシュする前に `pytest`（コンテナ内または仮想環境内）を実行してテストを実行してください。
 - インフラの変更は `infra/README.md` を参照し、AWS CDK を使って管理してください。
 
+## 設定・機密情報管理
+
+Pydantic Settings（`app/core/settings.py`）を使ってアプリ構成値と機密情報を一元管理しています。`.env` に記述した値は自動的にロードされ、`AppSettings` 経由でFastAPIや各サービスに渡されます。
+
+- `DATABASE_URL`: RDBの接続情報。未設定の場合はローカル用のSQLiteにフォールバックします。
+- `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_REGION`: AWS SDKやCDKが利用する認証情報。
+- `LLM_*`: LLM連携に必要な各種パラメータ（詳細は後述）。
+- `UPLOAD_BACKEND`, `UPLOAD_S3_BUCKET`, `UPLOAD_BASE_PREFIX`, `UPLOAD_LOCAL_DIRECTORY`: アップロード済みCSVの保存先を制御します。デフォルトはローカルディスク（`local`）に保存し、`s3` を指定するとS3アップロードが有効になります。
+
+### データベースマイグレーション（Alembic）
+
+SQLAlchemyモデルの変更は Alembic を使って管理します。初回セットアップまたはスキーマ更新時は以下を実行してください。
+
+```bash
+alembic upgrade head
+```
+
+差分からマイグレーションスクリプトを生成する場合は `alembic revision --autogenerate -m "message"` を使用します。生成後は内容を確認し、バージョン管理にコミットしてください。
+
+`.env` はリポジトリにコミットしないでください（`.gitignore` で除外済み）。共有が必要な場合は、`.env.example` をコピーして個々の環境で値を設定してください。
+
 ## LLM 連携設定
 
 コメント分析には任意のLLM APIを利用できます。`LLM_PROVIDER` を `mock`（デフォルト）、`openai`、`azure_openai`、`generic` から選択し、必要に応じて以下の環境変数を `.env` へ設定してください。
@@ -46,7 +67,12 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 ├── tests/                   # アプリ用ユニットテスト
 │   ├── test_health.py       # ヘルスチェックエンドポイントのテスト
 │   ├── test_llm_client.py   # LLMクライアントのテスト
-│   └── test_migrations.py   # マイグレーションテスト
+│   ├── test_migrations.py   # マイグレーションユーティリティの検証
+│   ├── test_settings.py     # 設定読み込みの検証
+│   └── test_storage.py      # アップロードストレージの検証
+├── alembic/                 # Alembic 設定とマイグレーションスクリプト
+│   ├── env.py               # マイグレーション実行時の設定
+│   └── versions/            # 生成されたマイグレーションファイル
 ├── infra/                   # AWS CDK によるインフラコード
 │   ├── app.py               # CDKエントリーポイント
 │   ├── README.md            # インフラ運用手順

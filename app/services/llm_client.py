@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -404,7 +405,8 @@ class LLMClient:
 @lru_cache
 def build_default_llm_config() -> LLMClientConfig:
     """環境変数からLLMクライアントの設定を構築する。"""
-    provider = os.getenv("LLM_PROVIDER", "mock").lower()
+    settings = get_settings()
+    provider = settings.llm.provider
     mapped_provider: Literal["mock", "generic", "openai", "azure_openai"]
     if provider in {"mock", "disabled"}:
         mapped_provider = "mock"
@@ -415,36 +417,16 @@ def build_default_llm_config() -> LLMClientConfig:
     else:
         mapped_provider = "generic"
 
-    timeout_env = os.getenv("LLM_TIMEOUT_SECONDS")
-    try:
-        timeout_seconds = float(timeout_env) if timeout_env else 15.0
-    except ValueError:
-        logger.warning(
-            "Invalid LLM_TIMEOUT_SECONDS value '%s'; using default.", timeout_env
-        )
-        timeout_seconds = 15.0
-
     config = LLMClientConfig(
         provider=mapped_provider,
-        base_url=os.getenv("LLM_API_BASE"),
-        model=os.getenv("LLM_MODEL"),
-        api_key=os.getenv("LLM_API_KEY"),
-        api_version=os.getenv("LLM_API_VERSION"),
-        organization=os.getenv("LLM_ORGANIZATION"),
-        timeout_seconds=timeout_seconds,
-        request_template=os.getenv("LLM_REQUEST_TEMPLATE"),
+        base_url=settings.llm.api_base,
+        model=settings.llm.model,
+        api_key=settings.llm.api_key,
+        api_version=settings.llm.api_version,
+        organization=settings.llm.organization,
+        timeout_seconds=settings.llm.timeout_seconds,
+        request_template=settings.llm.request_template,
+        extra_headers=settings.llm.extra_headers,
     )
-
-    # 追加ヘッダのロード (JSON文字列を想定)
-    extra_headers_raw = os.getenv("LLM_EXTRA_HEADERS")
-    if extra_headers_raw:
-        try:
-            headers = json.loads(extra_headers_raw)
-            if isinstance(headers, dict):
-                config.extra_headers.update(headers)
-            else:
-                logger.warning("LLM_EXTRA_HEADERS must be a JSON object.")
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse LLM_EXTRA_HEADERS as JSON.")
 
     return config
