@@ -5,11 +5,11 @@ from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
 from app.services import (
+    build_default_llm_config,
     LLMAnalysisResult as LLMStructuredResult,
     LLMClient,
     LLMClientConfig,
     LLMClientError,
-    build_default_llm_config,
 )
 
 from . import aggregation, safety, scoring
