@@ -4,9 +4,9 @@ import logging
 from logging.config import fileConfig
 from typing import Any, Dict
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.core.settings import get_settings
 from app.db import models
 
