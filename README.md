@@ -2,11 +2,6 @@
 
 FastAPIで構築されたAIE-DXprojectイニシアティブのバックエンドサービス。
 
-## 要件
-
-- Docker および Docker Compose v2
-- Make（便利なコマンド用、オプション）
-
 ## クイックスタート
 
 ```bash
