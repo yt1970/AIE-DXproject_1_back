@@ -4,6 +4,7 @@ import logging
 from typing import List, Sequence, Set
 
 from sqlalchemy import (
+    TIMESTAMP,
     Column,
     Float,
     ForeignKey,
@@ -11,7 +12,6 @@ from sqlalchemy import (
     MetaData,
     String,
     Text,
-    TIMESTAMP,
     func,
     inspect,
     literal,
