@@ -59,7 +59,9 @@ def apply_migrations(engine: Engine) -> None:
             column["name"] for column in inspector.get_columns("uploaded_file")
         }
         _apply_statements(
-            engine, _build_uploaded_file_migrations(uploaded_columns), table="uploaded_file"
+            engine,
+            _build_uploaded_file_migrations(uploaded_columns),
+            table="uploaded_file",
         )
     else:
         logger.info(
@@ -206,9 +208,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         connection.execute(text("ALTER TABLE comment__new RENAME TO comment"))
 
 
-def _safe_column(
-    table: Table, column_name: str, existing_columns: Set[str]
-):
+def _safe_column(table: Table, column_name: str, existing_columns: Set[str]):
     if column_name in existing_columns:
         return table.c[column_name]
     return literal(None).label(column_name)

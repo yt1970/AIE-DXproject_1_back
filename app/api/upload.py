@@ -218,7 +218,9 @@ async def upload_and_run_analysis_sync(
 
 
 def _extract_analyzable_columns(fieldnames: List[str]) -> List[str]:
-    analyzable = [name for name in fieldnames if name.startswith(COMMENT_ANALYSIS_PREFIX)]
+    analyzable = [
+        name for name in fieldnames if name.startswith(COMMENT_ANALYSIS_PREFIX)
+    ]
     if not analyzable:
         raise HTTPException(
             status_code=400,
