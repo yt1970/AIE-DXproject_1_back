@@ -4,7 +4,7 @@
 # このファイル全体の役割
 # ----------------------------------------------------------------------
 # このファイルは、クライアントからのファイルアップロード要求を処理するAPIエンドポイントを定義します。
-# アップロードされたCSVファイル（受講生IDとコメントを含む）を解析し、
+# アップロードされたCSVファイルから任意コメント列を抽出し、
 # 同期的に分析して結果をDBに保存する役割を担います。
 # ----------------------------------------------------------------------
 
@@ -14,7 +14,7 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, List
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -41,7 +41,7 @@ router = APIRouter()
 # ----------------------------------------------------------------------
 
 
-REQUIRED_COLUMNS = {"student_id", "comment"}
+COMMENT_ANALYSIS_PREFIX = "（任意）"
 
 
 # A. ファイルアップロードと同期分析の実行
@@ -55,20 +55,18 @@ async def upload_and_run_analysis_sync(
     クライアントからアップロードされたCSVファイルを同期的に分析し、結果をDBに保存します。
 
     - **この修正の目的**:
-      アップロードされるファイルが `student_id` と `comment` の列を持つCSVであるという前提のもと、
-      ファイル内の各コメントを分析し、正しい受講生IDに紐づけて結果を永続化します。
+      CSVヘッダーから「（任意）…」で始まるコメント列のみを抽出し、各セルを分析対象として扱います。
 
     - **処理の流れ**:
       1.  `metadata_json` をパース・検証します。
       2.  メタデータから `UploadedFile` レコードを作成し、ステータスを `PENDING` としてDBに一度保存します。
       3.  アップロードされたCSVファイルを読み込み、1行ずつ辞書として反復処理します。
-      4.  各行から `student_id` と `comment` を取得します。
-      5.  （堅牢性のため）`student_id` を持つ `Student` レコードがDBに存在しない場合は、仮のレコードを作成します。
-      6.  コメントに対して `analyze_comment` 関数を呼び出し、分析結果を取得します。
-      7.  分析結果と `student_id` を使って `Comment` レコードを作成し、DBセッションに追加します。
-      8.  すべてのコメントの処理が終わったら、`UploadedFile` レコードのステータスを `COMPLETED` に更新します。
-      9.  トランザクションをコミットし、すべての変更をDBに反映します。
-      10. 成功レスポンスをクライアントに返却します。
+      4.  各行で「（任意）…」列を順番に走査し、空でないテキストだけを抽出します。
+      5.  抽出した各テキストを `analyze_comment` に渡してLLM分析を実行します。
+      6.  分析結果を `Comment` レコードとして保存します。
+      7.  処理したコメント件数を `UploadedFile` レコードに記録し、`COMPLETED` ステータスへ更新します。
+      8.  トランザクションをコミットし、すべての変更をDBに反映します。
+      9.  成功レスポンスをクライアントに返却します。
     """
 
     # --- 1. メタデータのパースと検証 ---
@@ -113,12 +111,7 @@ async def upload_and_run_analysis_sync(
             detail="CSV header contains duplicate column names after normalization.",
         )
 
-    missing_columns = REQUIRED_COLUMNS - set(normalized_fieldnames)
-    if missing_columns:
-        raise HTTPException(
-            status_code=400,
-            detail=f"CSV is missing required columns: {', '.join(sorted(missing_columns))}",
-        )
+    analyzable_columns = _extract_analyzable_columns(normalized_fieldnames)
 
     csv_reader.fieldnames = normalized_fieldnames
 
@@ -166,54 +159,35 @@ async def upload_and_run_analysis_sync(
     processed_comments = 0
     try:
         for row in csv_reader:
-            student_id = _normalize_cell(row.get("student_id"))
-            comment_text = _normalize_cell(row.get("comment"))
+            comment_texts = _extract_comment_texts(row, analyzable_columns)
 
-            if not student_id or not comment_text:
-                continue  # 必須データがない行はスキップ
+            for comment_text in comment_texts:
+                total_comments += 1
 
-            total_comments += 1
+                # --- 6. 分析の実行 ---
+                analysis_result = analyze_comment(comment_text)
 
-            processed_comments += 1
+                if analysis_result.warnings:
+                    logger.warning(
+                        "LLM warnings for comment: %s",
+                        "; ".join(analysis_result.warnings),
+                    )
 
-            # --- 5. Studentレコードの存在確認と作成（なければ） ---
-            student = (
-                db.query(models.Student)
-                .filter(models.Student.student_id == student_id)
-                .first()
-            )
-            if not student:
-                student = models.Student(
-                    student_id=student_id,
-                    email_address=f"{student_id}@example.com",  # 仮のメールアドレス
-                    created_at=datetime.utcnow(),
+                processed_comments += 1
+
+                # --- 7. Commentレコードの作成 ---
+                new_comment = models.Comment(
+                    file_id=new_file_record.file_id,
+                    comment_text=comment_text,
+                    llm_category=analysis_result.category,
+                    llm_sentiment=analysis_result.sentiment,
+                    llm_summary=analysis_result.summary,
+                    llm_importance_level=analysis_result.importance_level,
+                    llm_importance_score=analysis_result.importance_score,
+                    llm_risk_level=analysis_result.risk_level,
+                    processed_at=datetime.utcnow(),
                 )
-                db.add(student)
-
-            # --- 6. 分析の実行 ---
-            analysis_result = analyze_comment(comment_text)
-
-            if analysis_result.warnings:
-                logger.warning(
-                    "LLM warnings for student_id=%s: %s",
-                    student_id,
-                    "; ".join(analysis_result.warnings),
-                )
-
-            # --- 7. Commentレコードの作成 ---
-            new_comment = models.Comment(
-                file_id=new_file_record.file_id,
-                student_id=student_id,  # CSVから取得したIDを使用
-                comment_learned_raw=comment_text,
-                llm_category=analysis_result.category,
-                llm_sentiment=analysis_result.sentiment,
-                llm_summary=analysis_result.summary,
-                llm_importance_level=analysis_result.importance_level,
-                llm_importance_score=analysis_result.importance_score,
-                llm_risk_level=analysis_result.risk_level,
-                processed_at=datetime.utcnow(),
-            )
-            db.add(new_comment)
+                db.add(new_comment)
 
         # --- 8. ファイルのステータスを更新 ---
         new_file_record.status = "COMPLETED"
@@ -241,6 +215,25 @@ async def upload_and_run_analysis_sync(
         status_url=f"/api/v1/uploads/{new_file_record.file_id}/status",
         message="Upload and analysis successful.",
     )
+
+
+def _extract_analyzable_columns(fieldnames: List[str]) -> List[str]:
+    analyzable = [name for name in fieldnames if name.startswith(COMMENT_ANALYSIS_PREFIX)]
+    if not analyzable:
+        raise HTTPException(
+            status_code=400,
+            detail="CSV must contain at least one column whose header starts with '（任意）'.",
+        )
+    return analyzable
+
+
+def _extract_comment_texts(row: dict, analyzable_columns: List[str]) -> List[str]:
+    comment_texts: List[str] = []
+    for column in analyzable_columns:
+        value = _normalize_cell(row.get(column))
+        if value:
+            comment_texts.append(value)
+    return comment_texts
 
 
 def _build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:

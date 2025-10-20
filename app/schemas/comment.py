@@ -32,8 +32,7 @@ class AnalysisStatusResponse(BaseModel):
 
 # 📝 (出力) 分析結果（コメント一覧）のスキーマ
 class CommentAnalysisSchema(BaseModel):
-    comment_learned_raw: str
-    comment_improvements_raw: Optional[str] = None
+    comment_text: str
     llm_category: Optional[str] = None
     llm_sentiment: Optional[str] = None
     llm_summary: Optional[str] = None

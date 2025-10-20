@@ -10,7 +10,7 @@ def test_apply_migrations_adds_missing_columns() -> None:
         "comment",
         metadata,
         Column("id", Integer, primary_key=True),
-        Column("comment_learned_raw", Text),
+        Column("comment_text", Text),
     )
     metadata.create_all(engine)
 
@@ -29,7 +29,7 @@ def test_apply_migrations_is_idempotent() -> None:
         "comment",
         metadata,
         Column("id", Integer, primary_key=True),
-        Column("comment_learned_raw", Text),
+        Column("comment_text", Text),
         Column("llm_importance_level", Text),
         Column("llm_importance_score", Integer),
         Column("llm_risk_level", Text),

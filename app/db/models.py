@@ -15,22 +15,6 @@ from sqlalchemy.orm import relationship
 Base = declarative_base()
 
 
-class Student(Base):
-    __tablename__ = "student"
-
-    # PK: 受講生ID
-    student_id = Column(String(100), primary_key=True, nullable=False)
-    # UNIQUE: メールアドレス
-    email_address = Column(String(255), unique=True, nullable=False)
-    account_id = Column(String(100))
-    corporate_name = Column(String(255))
-    school_name = Column(String(255))
-    created_at = Column(TIMESTAMP, nullable=False)
-
-    # リレーション定義 (Commentテーブルへの参照)
-    comments = relationship("Comment", back_populates="student")
-
-
 class UploadedFile(Base):
     __tablename__ = "uploaded_file"
 
@@ -73,13 +57,11 @@ class Comment(Base):
 
     # FK (外部キー): どのファイル、どの受講生かを参照
     file_id = Column(Integer, ForeignKey("uploaded_file.file_id"), nullable=False)
-    student_id = Column(String(100), ForeignKey("student.student_id"), nullable=False)
 
     # 数値評価データ
     score_satisfaction_overall = Column(Integer)
     # 生の自由記述コメント（LLM処理前）
-    comment_learned_raw = Column(Text)
-    comment_improvements_raw = Column(Text)
+    comment_text = Column(Text, nullable=False)
     # LLM分析結果
     llm_category = Column(String(50))
     llm_sentiment = Column(String(20))
@@ -91,4 +73,3 @@ class Comment(Base):
 
     # リレーションの定義
     uploaded_file = relationship("UploadedFile", back_populates="comments")
-    student = relationship("Student", back_populates="comments")

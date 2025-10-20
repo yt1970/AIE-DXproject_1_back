@@ -72,10 +72,10 @@ def test_upload_status_and_comments_flow(
         "lecture_number": 1,
     }
     csv_content = (
-        "student_id , comment\n"
-        "S001,Great session!\n"
-        ",Missing student id\n"
-        "S002,Needs more examples.\n"
+        "【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ\n"
+        "必須コメント,Great session!,Thank you!\n"
+        "別の必須,Needs more examples.,\n"
+        "また別の必須,,Follow-up requested\n"
     )
 
     response = client.post(
@@ -98,18 +98,23 @@ def test_upload_status_and_comments_flow(
     assert status_response.status_code == 200
     status_payload = status_response.json()
     assert status_payload["status"] == "COMPLETED"
-    assert status_payload["total_comments"] == 2
-    assert status_payload["processed_count"] == 2
+    assert status_payload["total_comments"] == 4
+    assert status_payload["processed_count"] == 4
 
     comments_response = client.get(
         f"/api/v1/courses/{metadata['course_name']}/comments"
     )
     assert comments_response.status_code == 200
     comments = comments_response.json()
-    assert len(comments) == 2
+    assert len(comments) == 4
 
-    received_texts = {comment["comment_learned_raw"] for comment in comments}
-    assert received_texts == {"Great session!", "Needs more examples."}
+    received_texts = {comment["comment_text"] for comment in comments}
+    assert received_texts == {
+        "Great session!",
+        "Thank you!",
+        "Needs more examples.",
+        "Follow-up requested",
+    }
 
     for comment in comments:
         assert comment["llm_category"] == "その他"
@@ -117,7 +122,7 @@ def test_upload_status_and_comments_flow(
         assert comment["llm_importance_level"] == "low"
         assert comment["llm_importance_score"] == 0.0
         assert comment["llm_risk_level"] == "none"
-        assert comment["llm_summary"] == comment["comment_learned_raw"]
+        assert comment["llm_summary"] == comment["comment_text"]
 
 
 def test_upload_rejects_duplicate_headers(integration_client: TestClient) -> None:
@@ -128,7 +133,10 @@ def test_upload_rejects_duplicate_headers(integration_client: TestClient) -> Non
         "lecture_date": "2024-05-01",
         "lecture_number": 2,
     }
-    csv_content = "student_id, student_id\nS001,Duplicate header test\n"
+    csv_content = (
+        "（任意）講義全体のコメント, （任意）講義全体のコメント\n"
+        "Great session!,Duplicate header test\n"
+    )
 
     response = client.post(
         "/api/v1/uploads",
