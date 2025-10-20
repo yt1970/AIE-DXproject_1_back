@@ -18,8 +18,8 @@ from sqlalchemy import (
     select,
     text,
 )
-from sqlalchemy.schema import Table
 from sqlalchemy.engine import Engine
+from sqlalchemy.schema import Table
 
 logger = logging.getLogger(__name__)
 
