@@ -1,4 +1,4 @@
-# AIE-DXproject バックエンド
+# AIE-DXプロジェクト１（バックエンド）
 
 FastAPIで構築されたAIE-DXprojectイニシアティブのバックエンドサービス。
 
