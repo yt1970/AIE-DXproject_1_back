@@ -216,3 +216,26 @@ class AnalysisJob(Base):
     completed_at = Column(TIMESTAMP, nullable=True) # ジョブ完了日時
 
     lecture = relationship("Lecture")
+
+# --- 8. 設定テーブル (カラムマッピング) ---
+class MappingType(enum.Enum):
+    """マッピングの種類を定義するEnum"""
+    COMMENT = "COMMENT"
+    SCORE = "SCORE"
+
+class ColumnMapping(Base):
+    """
+    CSVヘッダーとDBカラムのマッピングを管理するテーブル。
+    これにより、CSVのフォーマット変更にコード修正なしで対応できるようになります。
+    """
+    __tablename__ = "column_mappings"
+
+    mapping_id = Column(Integer, primary_key=True, autoincrement=True)
+    # CSVファイル上のヘッダー名 (例: "【必須】本日の講義で学んだこと")
+    csv_header = Column(String(255), nullable=False, unique=True)
+    # マッピングの種類 (COMMENT or SCORE)
+    mapping_type = Column(SAEnum(MappingType), nullable=False)
+    # DB上の対応先 (例: "learned" や "satisfaction_overall")
+    db_column_name = Column(String(255), nullable=False)
+
+    is_active = Column(Boolean, default=True, nullable=False) # このマッピングが有効か

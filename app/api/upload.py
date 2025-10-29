@@ -33,31 +33,6 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# --- 定数定義 ---
-# CSVヘッダーとDBモデルのCommentTypeをマッピング
-COMMENT_COLUMN_MAPPING: Dict[str, models.CommentType] = {
-    "【必須】本日の講義で学んだこと": models.CommentType.learned,
-    "（任意）特によかった部分": models.CommentType.good_point,
-    "（任意）分かりにくかった部分や改善点": models.CommentType.improvement_point,
-    "（任意）講師について": models.CommentType.instructor_feedback,
-    "（任意）今後開講してほしい講義": models.CommentType.future_request,
-    "（任意）ご自由にご意見を": models.CommentType.free_text,
-}
-# CSVヘッダーとDBモデルのSubmissionカラムをマッピング
-SCORE_COLUMN_MAPPING: Dict[str, str] = {
-    "本日の 総合的な満足度": "satisfaction_overall",
-    "学習量は適切だった": "workload_appropriate",
-    "講義内容が十分に理解できた": "content_understood",
-    "運営側のアナウンスが適切だった": "admin_support_good",
-    "本日の 講師の総合的な満足度": "instructor_overall",
-    "授業時間を効率的に使っていた": "instructor_time_efficient",
-    "質問に丁寧に対応してくれた": "instructor_q_and_a",
-    "話し方や声の大きさが適切だった": "instructor_voice",
-    "事前に予習をした": "self_prepared",
-    "意欲をもって講義に臨んだ": "self_motivated",
-    "今回学んだことを学習や研究に生かせる": "self_application",
-    "親しいご友人にこの講義の受講をお薦めしますか？": "nps_recommend",
-}
 STUDENT_ID_COLUMN = "account_id"
 
 
@@ -98,6 +73,18 @@ async def upload_and_run_analysis_sync(
         raise HTTPException(status_code=422, detail=f"Invalid metadata format: {e}")
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+
+    # --- 1.5 DBからカラムマッピング情報を取得 ---
+    mappings = db.query(models.ColumnMapping).filter_by(is_active=True).all()
+    comment_column_mapping = {
+        m.csv_header: models.CommentType[m.db_column_name]
+        for m in mappings if m.mapping_type == models.MappingType.COMMENT
+    }
+    score_column_mapping = {
+        m.csv_header: m.db_column_name
+        for m in mappings if m.mapping_type == models.MappingType.SCORE
+    }
+
 
     # --- 2. 講義情報(Lecture)の取得または作成 (Get-or-Create) ---
     lecture = db.query(models.Lecture).filter_by(
@@ -149,12 +136,12 @@ async def upload_and_run_analysis_sync(
                 db.flush()
 
             # Submission, Comment, CommentAnalysis の作成
-            submission_data = {db_col: row.get(csv_col) for csv_col, db_col in SCORE_COLUMN_MAPPING.items()}
+            submission_data = {db_col: row.get(csv_col) for csv_col, db_col in score_column_mapping.items()}
             submission = models.Submission(enrollment_id=enrollment.enrollment_id, **submission_data)
             db.add(submission)
             db.flush()
 
-            for col_name, comment_type in COMMENT_COLUMN_MAPPING.items():
+            for col_name, comment_type in comment_column_mapping.items():
                 comment_text = row.get(col_name, "").strip()
                 if comment_text:
                     new_comment = models.Comment(submission_id=submission.submission_id, comment_type=comment_type, comment_text=comment_text)
