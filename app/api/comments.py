@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.db import models
 from app.db.session import get_db
+
 # --- 内部モジュールのインポート ---
 from app.schemas.comment import CommentAnalysisSchema
 
@@ -29,7 +30,7 @@ router = APIRouter()
 
 # C. 分析結果の取得
 @router.get(
-    "/lectures/{lecture_name}/{lecture_year}/comments", # 修正済み
+    "/lectures/{lecture_name}/{lecture_year}/comments",  # 修正済み
     response_model=List[CommentAnalysisSchema],
 )
 def get_analysis_results(
@@ -52,11 +53,21 @@ def get_analysis_results(
     comments = (
         db.query(models.Comment)
         # 必要なテーブルをすべてJOINする
-        .join(models.Submission, models.Comment.submission_id == models.Submission.submission_id)
-        .join(models.Enrollment, models.Submission.enrollment_id == models.Enrollment.enrollment_id)
+        .join(
+            models.Submission,
+            models.Comment.submission_id == models.Submission.submission_id,
+        )
+        .join(
+            models.Enrollment,
+            models.Submission.enrollment_id == models.Enrollment.enrollment_id,
+        )
         .join(models.Lecture, models.Enrollment.lecture_id == models.Lecture.lecture_id)
         .join(models.Student, models.Enrollment.student_id == models.Student.account_id)
-        .outerjoin(models.CommentAnalysis, models.Comment.comment_id == models.CommentAnalysis.comment_id) # 分析結果はまだ無いかもしれないのでOUTER JOIN
+        .outerjoin(
+            models.CommentAnalysis,
+            models.Comment.comment_id == models.CommentAnalysis.comment_id,
+        )  # 分析結果はまだ無いかもしれないのでOUTER JOIN
+
         # フィルタリング
         .filter(
             models.Lecture.lecture_name == lecture_name,

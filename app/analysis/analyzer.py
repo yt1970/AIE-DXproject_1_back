@@ -4,6 +4,7 @@ import logging
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
+from app.db.models import SentimentType
 from app.services import LLMAnalysisResult as LLMStructuredResult
 from app.services import (
     LLMClient,
@@ -12,7 +13,6 @@ from app.services import (
     build_default_llm_config,
 )
 
-from app.db.models import SentimentType
 from . import aggregation, safety, scoring
 
 logger = logging.getLogger(__name__)
@@ -89,14 +89,20 @@ def analyze_comment(comment_text: str) -> CommentAnalysisResult:
     # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
     # is_improvement_needed: LLMの出力やキーワードに基づいて改善要否を判定
     # (注: ここはビジネスロジックに合わせてより高度な判定が可能です)
-    is_improvement_needed = "改善" in comment_text or (llm_structured.importance_score or 0) > 0.7
+    is_improvement_needed = (
+        "改善" in comment_text or (llm_structured.importance_score or 0) > 0.7
+    )
 
     # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
     is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
 
     # sentiment: LLMの感情分析結果をEnumに変換
     sentiment_str = (llm_structured.sentiment or "neutral").lower()
-    sentiment = SentimentType[sentiment_str] if sentiment_str in SentimentType.__members__ else SentimentType.neutral
+    sentiment = (
+        SentimentType[sentiment_str]
+        if sentiment_str in SentimentType.__members__
+        else SentimentType.neutral
+    )
 
     combined_warnings = _dedupe_warnings(llm_warnings + llm_structured.warnings)
 

@@ -10,12 +10,14 @@ from app.db.models import CommentType, SentimentType
 # APIがクライアントに返すデータの「形」を定義します。
 # ----------------------------------------------------------------------
 
+
 class UploadResponse(BaseModel):
     """
     ファイルアップロード受付成功時に返すレスポンスのスキーマ。
     重い処理の完了を待たずに、即座にジョブIDとステータス確認用URLを返却します。
     これにより、クライアントは長時間待たされることがなくなります。
     """
+
     job_id: int
     status_url: str
     message: str
@@ -23,6 +25,7 @@ class UploadResponse(BaseModel):
 
 class LectureSchema(BaseModel):
     """講義情報のスキーマ。"""
+
     lecture_id: int
     lecture_name: str
     lecture_year: int
@@ -30,12 +33,14 @@ class LectureSchema(BaseModel):
 
 class StudentSchema(BaseModel):
     """受講生情報のスキーマ。"""
+
     account_id: str
     account_name: Optional[str] = None
 
 
 class AnalysisDetailSchema(BaseModel):
     """LLMによる分析結果詳細のスキーマ。"""
+
     is_improvement_needed: bool
     is_slanderous: bool
     sentiment: Optional[SentimentType] = None
@@ -47,6 +52,7 @@ class CommentAnalysisSchema(BaseModel):
     APIで返す、集約されたコメント分析結果のスキーマ。
     複数のDBテーブルから情報を結合してこの形を構築します。
     """
+
     comment_id: int
     comment_type: CommentType
     comment_text: str
@@ -64,6 +70,7 @@ class AnalysisStatusResponse(BaseModel):
     クライアントは status_url (例: /api/v1/jobs/{job_id}/status) にリクエストを送り、
     このスキーマで定義された形式でジョブの進捗状況を受け取ります。
     """
+
     job_id: int
     status: str
     total_submissions: int
@@ -72,13 +79,16 @@ class AnalysisStatusResponse(BaseModel):
     created_at: datetime
     completed_at: Optional[datetime] = None
 
+
 # ----------------------------------------------------------------------
 # 📥 (入力) スキーマ
 # クライアントからAPIが受け取るデータの「形」を定義します。
 # ----------------------------------------------------------------------
 
+
 class UploadRequestMetadata(BaseModel):
     """ファイルアップロード時にクライアントから受け取るメタデータのスキーマ。"""
+
     lecture_name: str
     lecture_date: date
     uploader_id: Optional[int] = None

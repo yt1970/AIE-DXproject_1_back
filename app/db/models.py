@@ -1,12 +1,12 @@
 import enum
 from sqlalchemy import (
-    create_engine, Column, Integer, String, Text, Boolean,
+    Column, Integer, String, Text, Boolean,
     ForeignKey, TIMESTAMP, Enum as SAEnum, UniqueConstraint,
-    Float, Date # DateもLectureで使うかもしれません
+    Float, Date
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.sql import func # サーバーサイドのデフォルト日時を設定するため
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func  # サーバーサイドのデフォルト日時を設定するため
 
 Base = declarative_base()
 
@@ -20,7 +20,7 @@ class Student(Base):
 
     # PK: アカウントID (入力データから)
     account_id = Column(String(255), primary_key=True)
-    
+
     # 講義DBから引用したカラム
     student_id_alias = Column(String(255), index=True) # 受講生ID (アカウントIDと別の場合)
     account_name = Column(String(255)) # アカウント名
@@ -33,7 +33,7 @@ class Student(Base):
     # リレーション: 一人の生徒は複数の講義に登録(Enroll)できる
     enrollments = relationship("Enrollment", back_populates="student")
 
-# --- 2. マスターテーブル (講義) ---　　　　
+# --- 2. マスターテーブル (講義) ---
 class Lecture(Base):
     """
     講義マスターテーブル (Lectures)
@@ -43,13 +43,13 @@ class Lecture(Base):
 
     # PK: システムが採番するID
     lecture_id = Column(Integer, primary_key=True, autoincrement=True)
-    
+
     lecture_name = Column(String(255), nullable=False) # 講義名
     lecture_year = Column(Integer, nullable=False) # 講義開催年
 
     # リレーション: 一つの講義には複数の生徒が登録(Enroll)される
     enrollments = relationship("Enrollment", back_populates="lecture")
-    
+
     # 制約: 講義名と開催年の組み合わせはユニークでなければならない
     __table_args__ = (
         UniqueConstraint("lecture_name", "lecture_year", name="uq_lecture_name_year"),
@@ -69,7 +69,7 @@ class Enrollment(Base):
     # FK: 外部キー
     student_id = Column(String(255), ForeignKey("students.account_id"), nullable=False, index=True)
     lecture_id = Column(Integer, ForeignKey("lectures.lecture_id"), nullable=False, index=True)
-    
+
     # 講義DBから引用したカラム
     application_type = Column(String(100)) # 申込区分
     application_type_jp = Column(String(100)) # 申込区分（日本語）
@@ -77,10 +77,10 @@ class Enrollment(Base):
     # リレーション:
     student = relationship("Student", back_populates="enrollments")
     lecture = relationship("Lecture", back_populates="enrollments")
-    
+
     # リレーション: 1回の受講登録に対し、複数回の評価(Submission)があり得る（例: 毎週アンケート）
     submissions = relationship("Submission", back_populates="enrollment")
-    
+
     # 制約: 一人の生徒は同じ講義に一度しか登録できない
     __table_args__ = (
         UniqueConstraint("student_id", "lecture_id", name="uq_student_lecture"),
@@ -93,12 +93,12 @@ class Submission(Base):
     1回のアンケート回答（数値・真偽値）を格納します。
     """
     __tablename__ = "submissions"
-    
+
     submission_id = Column(Integer, primary_key=True, autoincrement=True) # PK
-    
+
     # FK: どの受講登録(Enrollment)に対する回答か
     enrollment_id = Column(Integer, ForeignKey("enrollments.enrollment_id"), nullable=False, index=True)
-    
+
     submitted_at = Column(TIMESTAMP, server_default=func.now()) # 回答日時
 
     # --- ここに数値評価・真偽値カラムをすべて列挙 ---
@@ -114,10 +114,10 @@ class Submission(Base):
     self_motivated = Column(Integer) # 意欲をもって講義に臨んだ
     self_application = Column(Integer) # 今回学んだことを学習や研究に生かせる
     nps_recommend = Column(Integer) # 親しいご友人にこの講義の受講をお薦めしますか？
-    
+
     # リレーション:
     enrollment = relationship("Enrollment", back_populates="submissions")
-    
+
     # リレーション: 1回の回答(Submission)には複数の自由記述(Comment)が含まれる
     comments = relationship("Comment", back_populates="submission", cascade="all, delete-orphan")
 
@@ -138,21 +138,21 @@ class Comment(Base):
     自由記述コメントを「縦持ち」で格納します。
     """
     __tablename__ = "comments"
-    
+
     comment_id = Column(Integer, primary_key=True, autoincrement=True) # PK
-    
+
     # FK: どの回答(Submission)に紐づくか
     submission_id = Column(Integer, ForeignKey("submissions.submission_id"), nullable=False, index=True)
-    
+
     # どの種類のコメントか
     comment_type = Column(SAEnum(CommentType), nullable=False)
-    
+
     # コメント本文
     comment_text = Column(Text, nullable=False)
 
     # リレーション:
     submission = relationship("Submission", back_populates="comments")
-    
+
     # リレーション: 1つのコメントに1つの分析結果が紐づく (1-to-1)
     analysis = relationship("CommentAnalysis", back_populates="comment", uselist=False, cascade="all, delete-orphan")
 
@@ -170,21 +170,21 @@ class CommentAnalysis(Base):
     LLMなどによる分析結果を格納します。（元のCommentIdテーブルの役割）
     """
     __tablename__ = "comment_analyses"
-    
+
     analysis_id = Column(Integer, primary_key=True, autoincrement=True) # PK
-    
+
     # FK: どのコメント(Comment)に対する分析か (1-to-1にするため unique=True)
     comment_id = Column(Integer, ForeignKey("comments.comment_id"), nullable=False, unique=True)
-    
+
     # --- 分析結果 ---
     is_improvement_needed = Column(Boolean, nullable=False, default=False) # 改善が必要か (kaizen_label)
     is_slanderous = Column(Boolean, nullable=False, default=False) # 誹謗中傷か (denger_comment)
     sentiment = Column(SAEnum(SentimentType)) # ポジネガ
-    
+
     # (任意) ご提示のコードにあった項目も追加可能
     # llm_summary = Column(Text) # 要約
     # llm_importance_score = Column(Float) # 重要度
-    
+
     analysis_version = Column(String(50)) # 分析ロジックのバージョン管理用
     analyzed_at = Column(TIMESTAMP, server_default=func.now()) # 分析実行日時
 

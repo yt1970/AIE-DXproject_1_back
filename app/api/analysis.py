@@ -32,9 +32,7 @@ def get_analysis_status(
       4. レコードが見つからなければ、404 Not Foundエラーを返します。
     """
     job = (
-        db.query(models.AnalysisJob)
-        .filter(models.AnalysisJob.job_id == job_id)
-        .first()
+        db.query(models.AnalysisJob).filter(models.AnalysisJob.job_id == job_id).first()
     )
 
     if not job:

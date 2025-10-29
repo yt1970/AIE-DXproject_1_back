@@ -14,7 +14,17 @@ src_paths = ["."]
 known_first_party = ["app"]
 skip_gitignore = true
 
+
+
 [tool.pytest.ini_options]
 addopts = "-q"
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.flake8]
+max-line-length = 88
+extend-exclude = [
+    "venv",
+    ".venv",
+    "alembic/versions"
+]

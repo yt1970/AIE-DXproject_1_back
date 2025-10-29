@@ -23,7 +23,7 @@ from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
 
 # --- 内部モジュールのインポート ---
-from app.analysis.analyzer import CommentAnalysisResult, analyze_comment
+from app.analysis.analyzer import analyze_comment
 from app.db import models
 from app.db.session import get_db
 from app.schemas.comment import UploadRequestMetadata, UploadResponse
@@ -67,8 +67,11 @@ async def upload_and_run_analysis_sync(
         content_text = content_bytes.decode("utf-8-sig")
         csv_reader = csv.DictReader(io.StringIO(content_text))
         if not csv_reader.fieldnames or STUDENT_ID_COLUMN not in csv_reader.fieldnames:
-            raise HTTPException(status_code=400, detail=f"CSV must contain '{STUDENT_ID_COLUMN}' column.")
-        rows = list(csv_reader) # 先に全行をメモリに読み込む
+            raise HTTPException(
+                status_code=400,
+                detail=f"CSV must contain '{STUDENT_ID_COLUMN}' column.",
+            )
+        rows = list(csv_reader)  # 先に全行をメモリに読み込む
     except (ValidationError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=422, detail=f"Invalid metadata format: {e}")
     except Exception as e:
@@ -78,23 +81,26 @@ async def upload_and_run_analysis_sync(
     mappings = db.query(models.ColumnMapping).filter_by(is_active=True).all()
     comment_column_mapping = {
         m.csv_header: models.CommentType[m.db_column_name]
-        for m in mappings if m.mapping_type == models.MappingType.COMMENT
+        for m in mappings
+        if m.mapping_type == models.MappingType.COMMENT
     }
     score_column_mapping = {
         m.csv_header: m.db_column_name
-        for m in mappings if m.mapping_type == models.MappingType.SCORE
+        for m in mappings
+        if m.mapping_type == models.MappingType.SCORE
     }
 
-
     # --- 2. 講義情報(Lecture)の取得または作成 (Get-or-Create) ---
-    lecture = db.query(models.Lecture).filter_by(
-        lecture_name=metadata.lecture_name,
-        lecture_year=metadata.lecture_date.year
-    ).first()
+    lecture = (
+        db.query(models.Lecture)
+        .filter_by(
+            lecture_name=metadata.lecture_name, lecture_year=metadata.lecture_date.year
+        )
+        .first()
+    )
     if not lecture:
         lecture = models.Lecture(
-            lecture_name=metadata.lecture_name,
-            lecture_year=metadata.lecture_date.year
+            lecture_name=metadata.lecture_name, lecture_year=metadata.lecture_date.year
         )
         db.add(lecture)
         db.flush()
@@ -125,26 +131,43 @@ async def upload_and_run_analysis_sync(
             # Get-or-Createロジック
             student = db.query(models.Student).filter_by(account_id=student_id).first()
             if not student:
-                student = models.Student(account_id=student_id, account_name=row.get("account_name"))
+                student = models.Student(
+                    account_id=student_id, account_name=row.get("account_name")
+                )
                 db.add(student)
                 db.flush()
 
-            enrollment = db.query(models.Enrollment).filter_by(student_id=student.account_id, lecture_id=lecture.lecture_id).first()
+            enrollment = (
+                db.query(models.Enrollment)
+                .filter_by(student_id=student.account_id, lecture_id=lecture.lecture_id)
+                .first()
+            )
             if not enrollment:
-                enrollment = models.Enrollment(student_id=student.account_id, lecture_id=lecture.lecture_id)
+                enrollment = models.Enrollment(
+                    student_id=student.account_id, lecture_id=lecture.lecture_id
+                )
                 db.add(enrollment)
                 db.flush()
 
             # Submission, Comment, CommentAnalysis の作成
-            submission_data = {db_col: row.get(csv_col) for csv_col, db_col in score_column_mapping.items()}
-            submission = models.Submission(enrollment_id=enrollment.enrollment_id, **submission_data)
+            submission_data = {
+                db_col: row.get(csv_col)
+                for csv_col, db_col in score_column_mapping.items()
+            }
+            submission = models.Submission(
+                enrollment_id=enrollment.enrollment_id, **submission_data
+            )
             db.add(submission)
             db.flush()
 
             for col_name, comment_type in comment_column_mapping.items():
                 comment_text = row.get(col_name, "").strip()
                 if comment_text:
-                    new_comment = models.Comment(submission_id=submission.submission_id, comment_type=comment_type, comment_text=comment_text)
+                    new_comment = models.Comment(
+                        submission_id=submission.submission_id,
+                        comment_type=comment_type,
+                        comment_text=comment_text,
+                    )
                     db.add(new_comment)
                     db.flush()
 
@@ -167,7 +190,7 @@ async def upload_and_run_analysis_sync(
         job.completed_at = datetime.utcnow()
         db.commit()
 
-    except Exception as e: # --- 7. エラー処理 ---
+    except Exception as e:  # --- 7. エラー処理 ---
         logger.exception(f"Analysis job {job.job_id} failed.")
         db.rollback()
         job.status = "FAILED"
