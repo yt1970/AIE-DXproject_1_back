@@ -190,3 +190,29 @@ class CommentAnalysis(Base):
 
     # リレーション (1-to-1)
     comment = relationship("Comment", back_populates="analysis")
+
+# --- 7. 非同期処理管理テーブル ---
+class AnalysisJob(Base):
+    """
+    非同期分析ジョブ管理テーブル (AnalysisJobs)
+    ファイルアップロードごとの処理（ジョブ）の状態を管理します。
+    将来的に分析処理を非同期化した場合、クライアントはこのテーブルの情報を
+    ステータス確認API経由でポーリングし、進捗を確認します。
+    """
+    __tablename__ = "analysis_jobs"
+
+    # PK: ジョブを一意に識別するID
+    job_id = Column(Integer, primary_key=True, autoincrement=True)
+    # FK: どの講義に紐づくジョブか
+    lecture_id = Column(Integer, ForeignKey("lectures.lecture_id"), nullable=False, index=True)
+
+    # ジョブの現在の状態 (例: PENDING, PROCESSING, COMPLETED, FAILED)
+    status = Column(String(50), nullable=False, default="PENDING")
+    original_filename = Column(String(255)) # アップロードされた元のファイル名
+    total_submissions = Column(Integer, default=0) # 処理対象の総行数
+    processed_submissions = Column(Integer, default=0) # 処理済みの行数
+    error_message = Column(Text) # エラー発生時のメッセージ
+    created_at = Column(TIMESTAMP, server_default=func.now()) # ジョブ作成日時
+    completed_at = Column(TIMESTAMP, nullable=True) # ジョブ完了日時
+
+    lecture = relationship("Lecture")
