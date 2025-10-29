@@ -1,46 +1,61 @@
-from datetime import date
-from typing import Optional
+from datetime import date, datetime
+from typing import List, Optional
 
 from pydantic import BaseModel
 
+from app.db.models import CommentType, SentimentType
 
-# 📤 (出力) ファイルアップロード成功時の応答スキーマ
+# ----------------------------------------------------------------------
+# 📤 (出力) スキーマ
+# ----------------------------------------------------------------------
+
+# ファイルアップロード成功時の応答
 class UploadResponse(BaseModel):
-    file_id: int
-    status_url: str
+    lecture_id: int
+    submissions_processed: int
+    comments_analyzed: int
     message: str
 
 
-# 📥 (入力) ファイルアップロード時に必要なメタデータスキーマ
-class UploadRequestMetadata(BaseModel):
-    # 講義の複合識別子をフロントエンドから受け取る
-    course_name: str
-    lecture_date: date  # 日付型
-    lecture_number: int
-
-    # 誰がアップロードしたかの情報（任意）
-    uploader_id: Optional[int] = None
+# 講義情報
+class LectureSchema(BaseModel):
+    lecture_id: int
+    lecture_name: str
+    lecture_year: int
 
 
-# 📊 (出力) ステータス確認時の応答スキーマ
-class AnalysisStatusResponse(BaseModel):
-    file_id: int
-    status: str
-    total_comments: int
-    processed_count: int
+# 受講生情報
+class StudentSchema(BaseModel):
+    account_id: str
+    account_name: Optional[str] = None
 
 
-# 📝 (出力) 分析結果（コメント一覧）のスキーマ
+# 分析結果の詳細
+class AnalysisDetailSchema(BaseModel):
+    is_improvement_needed: bool
+    is_slanderous: bool
+    sentiment: Optional[SentimentType] = None
+    analyzed_at: datetime
+
+
+# APIで返す、集約されたコメント分析結果
 class CommentAnalysisSchema(BaseModel):
+    comment_id: int
+    comment_type: CommentType
     comment_text: str
-    llm_category: Optional[str] = None
-    llm_sentiment: Optional[str] = None
-    llm_summary: Optional[str] = None
-    llm_importance_level: Optional[str] = None
-    llm_importance_score: Optional[float] = None
-    llm_risk_level: Optional[str] = None
-    score_satisfaction_overall: Optional[int] = None
+    analysis: Optional[AnalysisDetailSchema] = None
+    student: StudentSchema
+    lecture: LectureSchema
 
     class Config:
-        # DBモデルからの変換を許可 (SQLAlchemy ORMとの連携用)
-        from_attributes = True
+        from_attributes = True # DBモデルからの変換を許可
+
+# ----------------------------------------------------------------------
+# 📥 (入力) スキーマ
+# ----------------------------------------------------------------------
+
+# ファイルアップロード時にクライアントから受け取るメタデータ
+class UploadRequestMetadata(BaseModel):
+    course_name: str
+    lecture_date: date
+    uploader_id: Optional[int] = None

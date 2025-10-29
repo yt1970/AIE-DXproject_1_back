@@ -71,7 +71,6 @@ def get_analysis_status(
     # `db.query(models.Comment)`: `comment`テーブルへのクエリを開始します。
     # `.filter(models.Comment.file_id == file_id)`: `file_id`が一致するコメントを絞り込みます。
     # `.count()`: 条件に一致したレコードの総数をカウントします。
-    # (注：ここではtotal_commentsは仮で固定値を入れていますが、将来的にはExcelから読み込んだ総数などを保持する想定)
     processed_count = uploaded_file.processed_rows
     if processed_count is None:
         processed_count = (
