@@ -10,7 +10,7 @@
 from typing import List
 
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy.orm import Session, contains_eager, joinedload
 
 from app.db import models
 from app.db.session import get_db
@@ -64,13 +64,16 @@ def get_analysis_results(
         )
         # JOINしたテーブルのデータを効率的に読み込むための設定
         .options(
-            contains_eager(models.Comment.submission)
-            .contains_eager(models.Submission.enrollment)
-            .contains_eager(models.Enrollment.lecture),
-            contains_eager(models.Comment.submission)
-            .contains_eager(models.Submission.enrollment)
-            .contains_eager(models.Enrollment.student),
-            contains_eager(models.Comment.analysis),
+            # joinedload を使ってリレーション先のデータをJOINして取得する
+            # これにより、Commentオブジェクトから .analysis や .submission.enrollment.student などに
+            # アクセスした際に追加のクエリが発行されるのを防ぐ (N+1問題の回避)
+            joinedload(models.Comment.analysis),
+            joinedload(models.Comment.submission)
+            .joinedload(models.Submission.enrollment)
+            .joinedload(models.Enrollment.student),
+            joinedload(models.Comment.submission)
+            .joinedload(models.Submission.enrollment)
+            .joinedload(models.Enrollment.lecture),
         )
         .offset(skip)
         .limit(limit)
