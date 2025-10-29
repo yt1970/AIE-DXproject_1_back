@@ -1,8 +1,18 @@
 import enum
+# 期待される形式 (isort & black のルール)
 from sqlalchemy import (
-    Column, Integer, String, Text, Boolean,
-    ForeignKey, TIMESTAMP, Enum as SAEnum, UniqueConstraint,
-    Float, Date
+    TIMESTAMP,
+    Boolean,
+    Column,
+    Date,
+    Enum as SAEnum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    create_engine,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
