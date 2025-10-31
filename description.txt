@@ -1,0 +1,27 @@
+API一覧
+・/uploads/{file_id}/status
+概要 : これは、fileをDBから持ってきて、その状態を確認をするAPIです。
+以下の情報を返します。
+# 📊 (出力) ステータス確認時の応答スキーマ
+class AnalysisStatusResponse(BaseModel):
+    file_id: int
+    status: str
+    total_comments: int
+    processed_count: int
+
+・/courses/{course_name}/comments
+概要: 
+
+# 📝 (出力) 分析結果（コメント一覧）のスキーマ
+class CommentAnalysisSchema(BaseModel):
+    comment_text: str
+    llm_category: Optional[str] = None
+    llm_sentiment: Optional[str] = None
+    llm_summary: Optional[str] = None
+    llm_importance_level: Optional[str] = None
+    llm_importance_score: Optional[float] = None
+    llm_risk_level: Optional[str] = None
+    score_satisfaction_overall: Optional[int] = None
+
+・uploads/
+概要: 
