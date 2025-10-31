@@ -4,6 +4,7 @@ import logging
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
+from app.db.models import SentimentType
 from app.services import LLMAnalysisResult as LLMStructuredResult
 from app.services import (
     LLMClient,
@@ -22,41 +23,28 @@ class CommentAnalysisResult:
 
     def __init__(
         self,
-        score: float,
-        category: str,
-        sentiment: str,
-        is_safe: bool,
+        is_improvement_needed: bool,
+        is_slanderous: bool,
+        sentiment: SentimentType,
         *,
-        importance_level: Optional[str] = None,
-        importance_score: Optional[float] = None,
-        risk_level: Optional[str] = None,
-        summary: Optional[str] = None,
         warnings: Optional[List[str]] = None,
         raw_llm: Optional[Dict[str, Any]] = None,
     ) -> None:
-        self.score = score
-        # LLMのスコアが別途存在する場合は優先し、なければscoreを流用
-        self.importance_score = (
-            importance_score if importance_score is not None else score
-        )
-        self.category = category
+        # DBのCommentAnalysisモデルと対応する属性
+        self.is_improvement_needed = is_improvement_needed
+        self.is_slanderous = is_slanderous
         self.sentiment = sentiment
-        self.is_safe = is_safe
-        self.importance_level = importance_level
-        self.risk_level = risk_level
-        self.summary = summary
+
+        # デバッグやログ用の追加情報
         self.warnings = warnings or []
         self.raw_llm = raw_llm or {}
 
     def __repr__(self) -> str:
         return (
             "CommentAnalysisResult("
-            f"score={self.score}, "
-            f"category='{self.category}', "
-            f"sentiment='{self.sentiment}', "
-            f"is_safe={self.is_safe}, "
-            f"importance_level={self.importance_level}, "
-            f"risk_level={self.risk_level}"
+            f"is_improvement_needed={self.is_improvement_needed}, "
+            f"is_slanderous={self.is_slanderous}, "
+            f"sentiment={self.sentiment.value}"
             ")"
         )
 
@@ -98,23 +86,30 @@ def analyze_comment(comment_text: str) -> CommentAnalysisResult:
             warnings=[warning],
         )
 
-    importance_score = scoring.calculate_importance_score(comment_text, llm_structured)
-    category, sentiment = aggregation.classify_comment(comment_text, llm_structured)
-    is_safe = safety.is_comment_safe(comment_text, llm_structured)
-    risk_level = llm_structured.risk_level or ("high" if not is_safe else "none")
-    summary = llm_structured.summary or _fallback_summary(comment_text)
+    # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
+    # is_improvement_needed: LLMの出力やキーワードに基づいて改善要否を判定
+    # (注: ここはビジネスロジックに合わせてより高度な判定が可能です)
+    is_improvement_needed = (
+        "改善" in comment_text or (llm_structured.importance_score or 0) > 0.7
+    )
+
+    # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
+    is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
+
+    # sentiment: LLMの感情分析結果をEnumに変換
+    sentiment_str = (llm_structured.sentiment or "neutral").lower()
+    sentiment = (
+        SentimentType[sentiment_str]
+        if sentiment_str in SentimentType.__members__
+        else SentimentType.neutral
+    )
 
     combined_warnings = _dedupe_warnings(llm_warnings + llm_structured.warnings)
 
     return CommentAnalysisResult(
-        score=importance_score,
-        category=category,
+        is_improvement_needed=is_improvement_needed,
+        is_slanderous=is_slanderous,
         sentiment=sentiment,
-        is_safe=is_safe,
-        importance_level=llm_structured.importance_level,
-        importance_score=llm_structured.importance_score,
-        risk_level=risk_level,
-        summary=summary,
         warnings=combined_warnings,
         raw_llm=llm_structured.raw,
     )
