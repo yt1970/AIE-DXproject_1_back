@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
+from urllib.parse import urlparse
 
 try:
     import boto3
@@ -33,6 +34,9 @@ class StorageClient:
     ) -> str:
         raise NotImplementedError
 
+    def load(self, *, uri: str) -> bytes:
+        raise NotImplementedError
+
 
 class LocalStorageClient(StorageClient):
     """Persist files on the local filesystem (useful for development/testing)."""
@@ -52,6 +56,18 @@ class LocalStorageClient(StorageClient):
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         safe_path.write_bytes(data)
         return f"local://{normalized_key}"
+
+    def load(self, *, uri: str) -> bytes:
+        scheme, key = _split_uri(uri)
+        if scheme != "local":
+            raise StorageError(
+                f"Unsupported URI scheme '{scheme}' for LocalStorageClient."
+            )
+        safe_path = _safe_join(self.base_directory, key)
+        try:
+            return safe_path.read_bytes()
+        except FileNotFoundError as exc:
+            raise StorageError(f"Stored file not found: {key}") from exc
 
 
 class S3StorageClient(StorageClient):
@@ -103,6 +119,21 @@ class S3StorageClient(StorageClient):
 
         return f"s3://{self.bucket}/{key}"
 
+    def load(self, *, uri: str) -> bytes:
+        bucket, key = _split_s3_uri(uri, default_bucket=self.bucket)
+        try:
+            response = self.client.get_object(Bucket=bucket, Key=key)
+        except (BotoCoreError, ClientError) as exc:
+            logger.exception(
+                "Failed to download file from S3: bucket=%s key=%s", bucket, key
+            )
+            raise StorageError(f"Failed to download file from S3: {exc}") from exc
+
+        body = response.get("Body")
+        if body is None:
+            raise StorageError("S3 object body is empty.")
+        return body.read()
+
 
 def _safe_join(base_directory: Path, relative_path: str) -> Path:
     """Join paths and prevent directory traversal outside of base_directory."""
@@ -121,6 +152,26 @@ def _normalize_prefix(prefix: Optional[str]) -> str:
 
 def _normalize_key(key: str) -> str:
     return "/".join(part for part in key.strip("/").split("/") if part)
+
+
+def _split_uri(uri: str) -> Tuple[str, str]:
+    if "://" not in uri:
+        raise StorageError(f"Invalid storage URI: {uri}")
+    scheme, _, key = uri.partition("://")
+    return scheme, _normalize_key(key)
+
+
+def _split_s3_uri(uri: str, *, default_bucket: str) -> Tuple[str, str]:
+    parsed = urlparse(uri)
+    if parsed.scheme and parsed.scheme != "s3":
+        raise StorageError(f"Invalid S3 URI scheme: {parsed.scheme}")
+    bucket = parsed.netloc or default_bucket
+    if not bucket:
+        raise StorageError("S3 bucket is not specified in URI or configuration.")
+    key = _normalize_key(parsed.path)
+    if not key:
+        raise StorageError("S3 object key cannot be empty.")
+    return bucket, key
 
 
 @lru_cache(maxsize=1)

@@ -127,6 +127,25 @@ class StorageSettings(BaseSettings):
             return path
 
 
+class CelerySettings(BaseSettings):
+    """Celeryバックグラウンドワーカーの設定。"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="CELERY_",
+        extra="ignore",
+    )
+
+    broker_url: str = "redis://localhost:6379/0"
+    result_backend: Optional[str] = None
+    task_default_queue: str = "aie_dxproject_analysis"
+    task_always_eager: bool = False
+    task_eager_propagates: bool = True
+    task_default_retry_delay: float = 30.0
+    task_max_retries: int = 3
+
+
 class AppSettings(BaseSettings):
     """アプリ全体の設定。機密情報は環境変数や .env から読み込む。"""
 
@@ -146,6 +165,7 @@ class AppSettings(BaseSettings):
     aws: AWSSettings = Field(default_factory=AWSSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    celery: CelerySettings = Field(default_factory=CelerySettings)
 
     @property
     def aws_credentials(self) -> Dict[str, str]:

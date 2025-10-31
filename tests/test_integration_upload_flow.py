@@ -26,9 +26,15 @@ def fixture_integration_client(
     monkeypatch.setenv("UPLOAD_BACKEND", "local")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(uploads_dir))
     monkeypatch.setenv("LLM_PROVIDER", "mock")
+    monkeypatch.setenv("CELERY_TASK_ALWAYS_EAGER", "true")
+    monkeypatch.setenv("CELERY_TASK_EAGER_PROPAGATES", "true")
+    monkeypatch.setenv("CELERY_BROKER_URL", "memory://")
 
     settings_module.get_settings.cache_clear()
     clear_storage_client_cache()
+    from app.workers import configure_celery_app
+
+    configure_celery_app()
 
     engine = create_engine(
         f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
@@ -100,6 +106,11 @@ def test_upload_status_and_comments_flow(
     assert status_payload["status"] == "COMPLETED"
     assert status_payload["total_comments"] == 4
     assert status_payload["processed_count"] == 4
+    assert status_payload["task_id"]
+    assert status_payload["queued_at"]
+    assert status_payload["processing_started_at"]
+    assert status_payload["processing_completed_at"]
+    assert status_payload["error_message"] is None
 
     comments_response = client.get(
         f"/api/v1/courses/{metadata['course_name']}/comments"
