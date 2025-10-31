@@ -27,13 +27,19 @@ class UploadedFile(Base):
     lecture_number = Column(Integer, nullable=False)
 
     # その他の属性
-    status = Column(String(20), nullable=False)  # PENDING, COMPLETED, FAILED
-    s3_key = Column(String(512))  # ExcelファイルのS3パス
+    status = Column(
+        String(20), nullable=False
+    )  # QUEUED, PROCESSING, COMPLETED, FAILED
+    s3_key = Column(String(512))  # 保存先URI（local:// あるいは s3:// を想定）
     upload_timestamp = Column(TIMESTAMP, nullable=False)
     original_filename = Column(String(255))
     content_type = Column(String(100))
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
+    task_id = Column(String(255))
+    processing_started_at = Column(TIMESTAMP)
+    processing_completed_at = Column(TIMESTAMP)
+    error_message = Column(Text)
 
     # 複合ユニーク制約の定義 (これで重複登録を防ぐ)
     __table_args__ = (

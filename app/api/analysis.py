@@ -88,4 +88,9 @@ def get_analysis_status(
         status=uploaded_file.status,  # DBから取得したステータス
         total_comments=total_comments,
         processed_count=processed_count,  # DBから取得した処理済みコメント数
+        task_id=uploaded_file.task_id,
+        queued_at=uploaded_file.upload_timestamp,
+        processing_started_at=uploaded_file.processing_started_at,
+        processing_completed_at=uploaded_file.processing_completed_at,
+        error_message=uploaded_file.error_message,
     )

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -28,6 +28,11 @@ class AnalysisStatusResponse(BaseModel):
     status: str
     total_comments: int
     processed_count: int
+    task_id: Optional[str] = None
+    queued_at: datetime
+    processing_started_at: Optional[datetime] = None
+    processing_completed_at: Optional[datetime] = None
+    error_message: Optional[str] = None
 
 
 # 📝 (出力) 分析結果（コメント一覧）のスキーマ
