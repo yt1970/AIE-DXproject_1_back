@@ -25,8 +25,14 @@ class CommentAnalysisResult:
         self,
         is_improvement_needed: bool,
         is_slanderous: bool,
-        sentiment: SentimentType,
+        sentiment: str,
+        sentiment_normalized: SentimentType,
         *,
+        category: Optional[str] = None,
+        summary: Optional[str] = None,
+        importance_level: Optional[str] = None,
+        importance_score: Optional[float] = None,
+        risk_level: Optional[str] = None,
         warnings: Optional[List[str]] = None,
         raw_llm: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -34,6 +40,14 @@ class CommentAnalysisResult:
         self.is_improvement_needed = is_improvement_needed
         self.is_slanderous = is_slanderous
         self.sentiment = sentiment
+        self.sentiment_normalized = sentiment_normalized
+
+        # LLM分析結果の詳細情報
+        self.category = category
+        self.summary = summary
+        self.importance_level = importance_level
+        self.importance_score = importance_score
+        self.risk_level = risk_level
 
         # デバッグやログ用の追加情報
         self.warnings = warnings or []
@@ -44,7 +58,7 @@ class CommentAnalysisResult:
             "CommentAnalysisResult("
             f"is_improvement_needed={self.is_improvement_needed}, "
             f"is_slanderous={self.is_slanderous}, "
-            f"sentiment={self.sentiment.value}"
+            f"sentiment={self.sentiment_normalized.value}"
             ")"
         )
 
@@ -96,20 +110,34 @@ def analyze_comment(comment_text: str) -> CommentAnalysisResult:
     # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
     is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
 
-    # sentiment: LLMの感情分析結果をEnumに変換
-    sentiment_str = (llm_structured.sentiment or "neutral").lower()
-    sentiment = (
-        SentimentType[sentiment_str]
-        if sentiment_str in SentimentType.__members__
-        else SentimentType.neutral
+    category_guess, sentiment_guess = aggregation.classify_comment(
+        comment_text, llm_structured
     )
+
+    final_category = llm_structured.category or category_guess
+    final_summary = llm_structured.summary or _fallback_summary(comment_text)
+    final_importance_level = llm_structured.importance_level or "low"
+    final_importance_score = (
+        llm_structured.importance_score
+        if llm_structured.importance_score is not None
+        else 0.0
+    )
+    final_risk_level = llm_structured.risk_level or "none"
+    sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
+    sentiment_label = SENTIMENT_DISPLAY[sentiment_enum]
 
     combined_warnings = _dedupe_warnings(llm_warnings + llm_structured.warnings)
 
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
         is_slanderous=is_slanderous,
-        sentiment=sentiment,
+        sentiment=sentiment_label,
+        sentiment_normalized=sentiment_enum,
+        category=final_category,
+        summary=final_summary,
+        importance_level=final_importance_level,
+        importance_score=final_importance_score,
+        risk_level=final_risk_level,
         warnings=combined_warnings,
         raw_llm=llm_structured.raw,
     )
@@ -132,3 +160,39 @@ def _fallback_summary(comment_text: str, limit: int = 120) -> str:
     if len(normalized) <= limit:
         return normalized
     return normalized[: max(limit - 3, 0)] + "..."
+
+
+SENTIMENT_ALIASES = {
+    "positive": SentimentType.positive,
+    "ポジティブ": SentimentType.positive,
+    "negative": SentimentType.negative,
+    "ネガティブ": SentimentType.negative,
+    "neutral": SentimentType.neutral,
+    "ニュートラル": SentimentType.neutral,
+}
+
+SENTIMENT_DISPLAY = {
+    SentimentType.positive: "ポジティブ",
+    SentimentType.negative: "ネガティブ",
+    SentimentType.neutral: "ニュートラル",
+}
+
+
+def _normalize_sentiment(raw_value: str | None) -> SentimentType:
+    """Map arbitrary sentiment labels to the Enum we persist."""
+    if not raw_value:
+        return SentimentType.neutral
+
+    normalized = raw_value.strip().lower()
+    if normalized in SentimentType.__members__:
+        return SentimentType[normalized]
+
+    # Japanese labels and other aliases are matched without lower-casing
+    if raw_value in SENTIMENT_ALIASES:
+        return SENTIMENT_ALIASES[raw_value]
+
+    for key, mapped in SENTIMENT_ALIASES.items():
+        if key.lower() == normalized:
+            return mapped
+
+    return SentimentType.neutral

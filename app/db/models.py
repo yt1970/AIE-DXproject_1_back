@@ -1,7 +1,10 @@
+import enum
+
 from sqlalchemy import (
     TIMESTAMP,
     Column,
     Date,
+    Enum,
     Float,
     ForeignKey,
     Integer,
@@ -13,6 +16,24 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class SentimentType(enum.Enum):
+    """感情分析結果のEnum型。"""
+
+    positive = "positive"
+    negative = "negative"
+    neutral = "neutral"
+
+
+class CommentType(enum.Enum):
+    """コメントのカテゴリEnum型。"""
+
+    general = "general"
+    question = "question"
+    complaint = "complaint"
+    praise = "praise"
+    other = "other"
 
 
 class UploadedFile(Base):

@@ -93,3 +93,29 @@ def get_analysis_results(
 
     # --- 2. 結果を返却 ---
     return comments
+
+
+@router.get(
+    "/courses/{course_name}/comments",
+    response_model=List[CommentAnalysisSchema],
+)
+def get_course_comments(
+    course_name: str,
+    limit: int = 100,
+    skip: int = 0,
+    db: Session = Depends(get_db),
+):
+    """
+    講義名単位で最新のコメント分析結果を取得する。
+    """
+
+    comments = (
+        db.query(models.Comment)
+        .join(models.UploadedFile, models.Comment.file_id == models.UploadedFile.file_id)
+        .filter(models.UploadedFile.course_name == course_name)
+        .order_by(models.Comment.id.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return comments

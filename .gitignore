@@ -18,3 +18,4 @@ infra/.venv/
 .idea/
 .vscode/
 .env
+var/
