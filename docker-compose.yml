@@ -31,6 +31,8 @@ services:
     # ------------------------------------------------------------------
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/aiedx
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
       
     # `.env` ファイルも引き続き読み込みます。
     # `APP_ENV` など、他の環境変数を設定するために利用できます。
@@ -43,6 +45,26 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+      - redis
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: .
+    command: celery -A app.workers.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/aiedx
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
     networks:
       - app-network
 
@@ -60,8 +82,20 @@ services:
       - app-network
     restart: unless-stopped
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    networks:
+      - app-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  redis_data:
 
 networks:
   app-network:
