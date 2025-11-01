@@ -59,7 +59,9 @@ def analyze_and_store_comments(
                     file_id=file_record.file_id,
                     comment_text=comment_text,
                     llm_category=analysis_result.category,
-                    llm_sentiment=analysis_result.sentiment,
+                    llm_sentiment=analysis_result.sentiment_normalized.value
+                    if analysis_result.sentiment_normalized
+                    else None,
                     llm_summary=analysis_result.summary,
                     llm_importance_level=analysis_result.importance_level,
                     llm_importance_score=analysis_result.importance_score,
