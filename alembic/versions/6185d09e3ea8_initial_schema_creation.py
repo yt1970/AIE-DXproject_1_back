@@ -183,9 +183,59 @@ def upgrade() -> None:
         sa.UniqueConstraint("comment_id"),
     )
 
+    # --- 9. uploaded_file (アップロードファイル管理) ---
+    op.create_table(
+        "uploaded_file",
+        sa.Column("file_id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("course_name", sa.String(length=255), nullable=False),
+        sa.Column("lecture_date", sa.Date(), nullable=False),
+        sa.Column("lecture_number", sa.Integer(), nullable=False),
+        sa.Column("status", sa.String(length=20), nullable=False),
+        sa.Column("s3_key", sa.String(length=512), nullable=True),
+        sa.Column("upload_timestamp", sa.TIMESTAMP(), nullable=False),
+        sa.Column("original_filename", sa.String(length=255), nullable=True),
+        sa.Column("content_type", sa.String(length=100), nullable=True),
+        sa.Column("total_rows", sa.Integer(), nullable=True),
+        sa.Column("processed_rows", sa.Integer(), nullable=True),
+        sa.Column("task_id", sa.String(length=255), nullable=True),
+        sa.Column("processing_started_at", sa.TIMESTAMP(), nullable=True),
+        sa.Column("processing_completed_at", sa.TIMESTAMP(), nullable=True),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.PrimaryKeyConstraint("file_id"),
+        sa.UniqueConstraint(
+            "course_name",
+            "lecture_date",
+            "lecture_number",
+            name="uq_course_lecture_instance",
+        ),
+    )
+
+    # --- 10. comment (新しいコメントテーブル) ---
+    op.create_table(
+        "comment",
+        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+        sa.Column("file_id", sa.Integer(), nullable=False),
+        sa.Column("score_satisfaction_overall", sa.Integer(), nullable=True),
+        sa.Column("comment_text", sa.Text(), nullable=False),
+        sa.Column("llm_category", sa.String(length=50), nullable=True),
+        sa.Column("llm_sentiment", sa.String(length=20), nullable=True),
+        sa.Column("llm_summary", sa.Text(), nullable=True),
+        sa.Column("llm_importance_level", sa.String(length=20), nullable=True),
+        sa.Column("llm_importance_score", sa.Float(), nullable=True),
+        sa.Column("llm_risk_level", sa.String(length=20), nullable=True),
+        sa.Column("processed_at", sa.TIMESTAMP(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["file_id"],
+            ["uploaded_file.file_id"],
+        ),
+        sa.PrimaryKeyConstraint("id"),
+    )
+
 
 def downgrade() -> None:
     # --- 削除は子テーブルから親テーブルの順に行う ---
+    op.drop_table("comment")
+    op.drop_table("uploaded_file")
     op.drop_table("comment_analyses")
     op.drop_table("comments")
     op.drop_table("analysis_jobs")
