@@ -7,8 +7,8 @@
 # 特定の講義に関連するコメントの分析結果を一覧で取得する機能などを担います。
 # ----------------------------------------------------------------------
 
-from typing import List
 import logging
+from typing import List
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, contains_eager

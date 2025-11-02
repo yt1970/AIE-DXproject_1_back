@@ -7,8 +7,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db

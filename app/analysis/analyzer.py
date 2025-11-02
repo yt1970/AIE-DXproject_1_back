@@ -6,9 +6,8 @@ from typing import List, Optional
 
 from app.db.models import SentimentType
 from app.services import LLMClient, LLMClientConfig, build_default_llm_config
-from . import llm_analyzer
 
-from . import aggregation, safety, scoring
+from . import aggregation, llm_analyzer, safety, scoring
 
 logger = logging.getLogger(__name__)
 

@@ -5,11 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from app.services import (
-    LLMAnalysisResult,
-    LLMClient,
-    LLMClientError,
-)
+from app.services import LLMAnalysisResult, LLMClient, LLMClientError
 
 logger = logging.getLogger(__name__)
 

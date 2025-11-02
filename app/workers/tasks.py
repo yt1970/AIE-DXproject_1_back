@@ -7,12 +7,10 @@ from typing import Optional
 from celery import Task
 from sqlalchemy.orm import Session
 
-from app.db import models, session as db_session
+from app.db import models
+from app.db import session as db_session
 from app.services import StorageError, get_storage_client
-from app.services.upload_pipeline import (
-    CsvValidationError,
-    analyze_and_store_comments,
-)
+from app.services.upload_pipeline import CsvValidationError, analyze_and_store_comments
 
 from .celery_app import celery_app
 

@@ -8,8 +8,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from app.analysis.prompts import load_prompts
 
+from app.analysis.prompts import load_prompts
 from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
