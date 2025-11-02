@@ -8,26 +8,34 @@ from typing import Any, Dict, List, Literal, Optional
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from app.analysis.prompts import load_prompts
 
 from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# デフォルトのシステムプロンプト (OpenAI系API向け)
-DEFAULT_SYSTEM_PROMPT = (
-    "You analyze student feedback comments. "
-    "Return a strict JSON object with the following keys: "
-    "'category' (string), "
-    "'importance_level' (string such as 'low', 'medium', or 'high'), "
-    "'importance_score' (number between 0 and 1), "
-    "'risk_level' (string such as 'none', 'low', 'medium', 'high', 'critical'), "
-    "'sentiment' (string), "
-    "'is_safe' (boolean), "
-    "'summary' (string), "
-    "'tags' (array of strings). "
-    "Always respond with valid JSON. Do not include markdown."
-)
+# ---------------------------------------------------------------------------
+# プロンプト定義
+# ---------------------------------------------------------------------------
 
+PROMPT_TEMPLATE_BASE = """
+あなたは大学の講義改善を支援する優秀なアシスタントです。
+これから渡される、ある講義に対する学生からのフィードバックコメントを分析してください。
+
+## 講義名
+{course_name}
+
+## 質問事項項目名
+{question_text}
+
+## 質問事項に対する学生からのコメント
+```
+{comment_text}
+```
+
+## 指示
+{instructions}
+"""
 
 # ---------------------------------------------------------------------------
 # 例外定義
@@ -121,26 +129,49 @@ class LLMClient:
                 "LLMClientConfig.base_url is required when provider is not 'mock'."
             )
 
-    def analyze_comment(self, comment_text: str) -> LLMAnalysisResult:
+    def analyze_comment(
+        self,
+        comment_text: str,
+        *,
+        analysis_type: str = "full_analysis",
+        course_name: Optional[str] = None,
+        question_text: Optional[str] = None,
+    ) -> LLMAnalysisResult:
         """コメントをLLMに送信し、整形済みの分析結果を返す。"""
         if not comment_text:
             raise ValueError("comment_text must not be empty")
 
         if self.config.provider == "mock":
-            logger.debug("LLM provider set to 'mock'; returning fallback result.")
-            return LLMAnalysisResult(
-                category="その他",
-                importance_level="low",
-                importance_score=0.0,
-                risk_level="none",
-                sentiment="neutral",
-                is_safe=True,
-                summary=None,
-                raw={"provider": "mock", "comment": comment_text},
-                warnings=["LLM provider is 'mock'; returning default analysis."],
+            # モックの場合、分析タイプに関わらず固定値を返す
+            logger.debug(
+                "LLM provider is 'mock'. Returning mock response for task: %s",
+                analysis_type,
             )
+            mock_payload: Dict[str, Any] = {}
+            if analysis_type == "sentiment":
+                mock_payload = {"sentiment": "neutral"}
+            elif analysis_type == "importance":
+                mock_payload = {"importance_level": "low", "importance_score": 0.1}
+            elif analysis_type == "categorization":
+                mock_payload = {"category": "その他", "tags": ["mock"]}
+            elif analysis_type == "risk_assessment":
+                mock_payload = {"risk_level": "none", "is_safe": True}
+            else:  # full_analysis or unknown
+                mock_payload = {
+                    "category": "その他", "sentiment": "neutral", "importance_level": "low",
+                    "importance_score": 0.1, "risk_level": "none", "is_safe": True,
+                    "summary": comment_text[:50], "tags": [],
+                }
+            # 実際のLLM応答にはrawやwarningsは含まれないため、ここでは返さない
+            # これらは呼び出し元でエラーハンドリングの結果として追加される
+            return LLMAnalysisResult.model_validate(mock_payload)
 
-        payload = self._build_payload(comment_text)
+        payload = self._build_payload(
+            comment_text,
+            analysis_type=analysis_type,
+            course_name=course_name,
+            question_text=question_text,
+        )
         headers = self._build_headers()
         params = self._build_query_params()
 
@@ -156,8 +187,14 @@ class LLMClient:
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError("LLM API call timed out") from exc
         except httpx.HTTPStatusError as exc:
+            # エラー応答の本文から、より詳細な情報を取得しようと試みる
+            try:
+                error_details = exc.response.json()
+            except json.JSONDecodeError:
+                error_details = exc.response.text
             raise LLMClientError(
                 f"LLM API returned HTTP error: {exc.response.status_code}"
+                f"LLM API returned HTTP error: {exc.response.status_code} - {error_details}"
             ) from exc
         except httpx.HTTPError as exc:
             raise LLMClientError(f"LLM API communication error: {exc!r}") from exc
@@ -189,14 +226,32 @@ class LLMClient:
     # ------------------------------------------------------------------
     # 内部ユーティリティ
     # ------------------------------------------------------------------
-    def _build_payload(self, comment_text: str) -> Dict[str, Any]:
+    def _build_payload(
+        self,
+        comment_text: str,
+        *,
+        analysis_type: str,
+        course_name: Optional[str],
+        question_text: Optional[str],
+    ) -> Dict[str, Any]:
+        course_name_str = course_name or "（指定なし）"
+        question_text_str = question_text or "（指定なし）"
+
+        all_prompts = load_prompts()
+        instructions = all_prompts.get(analysis_type) or all_prompts.get("full_analysis", "")
+
+        final_prompt = PROMPT_TEMPLATE_BASE.format(
+            course_name=course_name_str,
+            question_text=question_text_str,
+            comment_text=comment_text,
+            instructions=instructions,
+        )
+
         if self.config.provider in {"openai", "azure_openai"}:
-            system_prompt = self.config.request_template or DEFAULT_SYSTEM_PROMPT
             payload: Dict[str, Any] = {
                 "model": self.config.model,
                 "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": comment_text},
+                    {"role": "user", "content": final_prompt},
                 ],
             }
             if self.config.enable_response_format:
@@ -206,7 +261,7 @@ class LLMClient:
         # genericプロバイダ向けのシンプルなリクエスト
         request_body: Dict[str, Any] = {
             "comment": comment_text,
-            "instructions": self.config.request_template or DEFAULT_SYSTEM_PROMPT,
+            "instructions": final_prompt,
         }
         if self.config.model:
             request_body["model"] = self.config.model

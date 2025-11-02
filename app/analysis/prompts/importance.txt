@@ -1,0 +1,14 @@
+コメントの重要度を分析してください。
+
+## 指示
+- `importance_level`と`importance_score`キーを持つJSONオブジェクトで回答してください。
+- `importance_level`は 'low', 'medium', 'high' のいずれかです。
+- `importance_score`は 0.0 から 1.0 の数値です。
+
+## 出力例
+```json
+{
+  "importance_level": "high",
+  "importance_score": 0.85
+}
+```

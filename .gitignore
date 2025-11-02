@@ -19,3 +19,5 @@ infra/.venv/
 .vscode/
 .env
 var/
+experiments/
+test_data.csv

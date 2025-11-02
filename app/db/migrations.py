@@ -33,6 +33,16 @@ def apply_migrations(engine: Engine) -> None:
     inspector = inspect(engine)
     table_names: Sequence[str] = inspector.get_table_names()
 
+    # SurveyResponseテーブルのマイグレーションを適用
+    if "survey_response" in table_names:
+        survey_response_columns: Set[str] = {
+            column["name"] for column in inspector.get_columns("survey_response")
+        }
+        _apply_statements(
+            engine, _build_survey_response_migrations(survey_response_columns), table="survey_response"
+        )
+
+    # Commentテーブルのマイグレーションを適用
     if "comment" in table_names:
         comment_columns: Set[str] = {
             column["name"] for column in inspector.get_columns("comment")
@@ -87,6 +97,20 @@ def _apply_statements(engine: Engine, statements: List[str], *, table: str) -> N
 def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     """Build ALTER TABLE statements for missing columns."""
     statements: List[str] = []
+    
+    if "account_id" not in existing_columns:
+        statements.append("ALTER TABLE comment ADD COLUMN account_id VARCHAR(255)")
+
+    if "account_name" not in existing_columns:
+        statements.append("ALTER TABLE comment ADD COLUMN account_name VARCHAR(255)")
+
+    if "question_text" not in existing_columns:
+        statements.append("ALTER TABLE comment ADD COLUMN question_text TEXT")
+
+    if "survey_response_id" not in existing_columns:
+        statements.append(
+            "ALTER TABLE comment ADD COLUMN survey_response_id INTEGER REFERENCES survey_response(id)"
+        )
 
     if "comment_text" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN comment_text TEXT")
@@ -101,6 +125,32 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
 
     if "llm_risk_level" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_risk_level VARCHAR(20)")
+
+    return statements
+
+
+def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
+    """Build ALTER TABLE statements for survey_response table."""
+    statements: List[str] = []
+    
+    # 本番用CSVの全数値評価カラムを追加
+    new_score_columns = {
+        "score_satisfaction_content_volume": "INTEGER",
+        "score_satisfaction_content_understanding": "INTEGER",
+        "score_satisfaction_content_announcement": "INTEGER",
+        "score_satisfaction_instructor_overall": "INTEGER",
+        "score_satisfaction_instructor_efficiency": "INTEGER",
+        "score_satisfaction_instructor_response": "INTEGER",
+        "score_satisfaction_instructor_clarity": "INTEGER",
+        "score_self_preparation": "INTEGER",
+        "score_self_motivation": "INTEGER",
+        "score_self_applicability": "INTEGER",
+        "score_recommend_to_friend": "INTEGER",
+    }
+
+    for col, col_type in new_score_columns.items():
+        if col not in existing_columns:
+            statements.append(f"ALTER TABLE survey_response ADD COLUMN {col} {col_type}")
 
     return statements
 
