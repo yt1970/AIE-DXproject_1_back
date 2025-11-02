@@ -2,16 +2,11 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 from app.db.models import SentimentType
-from app.services import LLMAnalysisResult as LLMStructuredResult
-from app.services import (
-    LLMClient,
-    LLMClientConfig,
-    LLMClientError,
-    build_default_llm_config,
-)
+from app.services import LLMClient, LLMClientConfig, build_default_llm_config
+from . import llm_analyzer
 
 from . import aggregation, safety, scoring
 
@@ -28,13 +23,7 @@ class CommentAnalysisResult:
         sentiment: str,
         sentiment_normalized: SentimentType,
         *,
-        category: Optional[str] = None,
-        summary: Optional[str] = None,
-        importance_level: Optional[str] = None,
-        importance_score: Optional[float] = None,
-        risk_level: Optional[str] = None,
-        warnings: Optional[List[str]] = None,
-        raw_llm: Optional[Dict[str, Any]] = None,
+        llm_result: llm_analyzer.LLMAnalysisResult,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
@@ -43,15 +32,15 @@ class CommentAnalysisResult:
         self.sentiment_normalized = sentiment_normalized
 
         # LLM分析結果の詳細情報
-        self.category = category
-        self.summary = summary
-        self.importance_level = importance_level
-        self.importance_score = importance_score
-        self.risk_level = risk_level
+        self.category = llm_result.category
+        self.summary = llm_result.summary
+        self.importance_level = llm_result.importance_level
+        self.importance_score = llm_result.importance_score
+        self.risk_level = llm_result.risk_level
 
         # デバッグやログ用の追加情報
-        self.warnings = warnings or []
-        self.raw_llm = raw_llm or {}
+        self.warnings = llm_result.warnings
+        self.raw_llm = llm_result.raw
 
     def __repr__(self) -> str:
         return (
@@ -67,45 +56,53 @@ class CommentAnalysisResult:
 def get_llm_client() -> LLMClient:
     """環境変数から設定を読み込み、LLMクライアントを初期化する。"""
     config = build_default_llm_config()
+
+    # mockプロバイダーの場合は、設定不備があっても常に動作させる
+    if config.provider == "mock":
+        return LLMClient(config=LLMClientConfig(provider="mock"))
+
+    # mock以外のプロバイダーで設定不備がある場合は、警告を出してフォールバックする
     try:
         return LLMClient(config=config)
     except ValueError as exc:
         logger.warning(
-            "Invalid LLM configuration detected (%s); falling back to mock provider.",
+            "Invalid LLM configuration for provider '%s' (%s); falling back to mock provider.",
+            config.provider,
             exc,
         )
         return LLMClient(config=LLMClientConfig(provider="mock"))
 
 
-def analyze_comment(comment_text: str) -> CommentAnalysisResult:
+def analyze_comment(
+    comment_text: str,
+    *,
+    course_name: Optional[str] = None,
+    question_text: Optional[str] = None,
+    skip_llm_analysis: bool = False,
+) -> CommentAnalysisResult:
     """
     単一のコメントを分析し、総合的な結果を返す
-
-    Args:
-        comment_text: 分析対象のコメント文字列
-
-    Returns:
-        分析結果をまとめたオブジェクト
     """
 
-    llm_warnings: List[str] = []
-    try:
-        llm_structured = get_llm_client().analyze_comment(comment_text)
-    except (LLMClientError, ValueError) as exc:
-        warning = f"LLM analysis failed: {exc}"
-        logger.warning(warning)
-        llm_warnings.append(warning)
-        llm_structured = LLMStructuredResult(
-            raw={"error": str(exc), "comment": comment_text},
-            warnings=[warning],
+    # --- 1. 各種分析モジュールを呼び出す ---
+    # skip_llm_analysisフラグがTrueの場合、LLMを呼び出さずにデフォルト値を返す
+    if skip_llm_analysis:
+        llm_structured = llm_analyzer.LLMAnalysisResult(
+            raw={"skipped": True, "reason": "Not a target for LLM analysis"},
+            warnings=["LLM analysis was skipped for this comment."],
+        )
+    else:
+        llm_client = get_llm_client()
+        llm_structured = llm_analyzer.analyze_with_llm(
+            llm_client, comment_text, course_name=course_name, question_text=question_text
         )
 
+    # 将来的にはここに形態素解析などの結果も追加できる
+    # morphological_result = morphological_analyzer.analyze(...)
+
     # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
-    # is_improvement_needed: LLMの出力やキーワードに基づいて改善要否を判定
-    # (注: ここはビジネスロジックに合わせてより高度な判定が可能です)
-    is_improvement_needed = (
-        "改善" in comment_text or (llm_structured.importance_score or 0) > 0.7
-    )
+    final_importance_score = scoring.determine_importance_score(llm_structured)
+    is_improvement_needed = final_importance_score > 0.7
 
     # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
     is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
@@ -114,32 +111,21 @@ def analyze_comment(comment_text: str) -> CommentAnalysisResult:
         comment_text, llm_structured
     )
 
-    final_category = llm_structured.category or category_guess
-    final_summary = llm_structured.summary or _fallback_summary(comment_text)
-    final_importance_level = llm_structured.importance_level or "low"
-    final_importance_score = (
-        llm_structured.importance_score
-        if llm_structured.importance_score is not None
-        else 0.0
-    )
-    final_risk_level = llm_structured.risk_level or "none"
     sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
     sentiment_label = SENTIMENT_DISPLAY[sentiment_enum]
 
-    combined_warnings = _dedupe_warnings(llm_warnings + llm_structured.warnings)
+    # 最終的な結果を構築
+    llm_structured.importance_score = final_importance_score
+    llm_structured.risk_level = llm_structured.risk_level or "none"
+    llm_structured.category = llm_structured.category or category_guess
+    llm_structured.summary = llm_structured.summary or _fallback_summary(comment_text)
 
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
         is_slanderous=is_slanderous,
         sentiment=sentiment_label,
         sentiment_normalized=sentiment_enum,
-        category=final_category,
-        summary=final_summary,
-        importance_level=final_importance_level,
-        importance_score=final_importance_score,
-        risk_level=final_risk_level,
-        warnings=combined_warnings,
-        raw_llm=llm_structured.raw,
+        llm_result=llm_structured,
     )
 
 

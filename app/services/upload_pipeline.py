@@ -16,7 +16,10 @@ from app.schemas.comment import UploadRequestMetadata
 
 logger = logging.getLogger(__name__)
 
-COMMENT_ANALYSIS_PREFIX = "（任意）"
+# （任意）で始まる列のみをLLM分析の対象とする
+LLM_ANALYSIS_TARGET_PREFIX = "（任意）"
+# 【必須】または（任意）で始まる列をコメントとしてDBに保存する
+COMMENT_SAVE_TARGET_PREFIXES = ("（任意）", "【必須】")
 
 
 class CsvValidationError(ValueError):
@@ -42,21 +45,79 @@ def analyze_and_store_comments(
     total_comments = 0
     processed_comments = 0
 
+    # 数値評価カラムとDBモデル属性のマッピング
+    score_column_map = {
+        "本日の総合的な満足度を５段階で教えてください。": "score_satisfaction_overall",
+        "本日の講義内容について５段階で教えてください。\n学習量は適切だった": "score_satisfaction_content_volume",
+        "本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた": "score_satisfaction_content_understanding",
+        "本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった": "score_satisfaction_content_announcement",
+        "本日の講師の総合的な満足度を５段階で教えてください。": "score_satisfaction_instructor_overall",
+        "本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた": "score_satisfaction_instructor_efficiency",
+        "本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた": "score_satisfaction_instructor_response",
+        "本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった": "score_satisfaction_instructor_clarity",
+        "ご自身について５段階で教えてください。\n事前に予習をした": "score_self_preparation",
+        "ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ": "score_self_motivation",
+        "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる": "score_self_applicability",
+        "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_to_friend",
+    }
+
     for row in csv_reader:
-        for comment_text in _extract_comment_texts(row, analyzable_columns):
+        account_id = row.get("account_id")
+        account_name = row.get("account_name")
+
+        # 1. 数値評価を SurveyResponse テーブルに保存 (1行につき1レコード)
+        survey_response_data = {
+            "file_id": file_record.file_id,
+            "account_id": account_id,
+            "account_name": account_name,
+        }
+        for col_name, attr_name in score_column_map.items():
+            if col_name in row and row[col_name] and row[col_name].isdigit():
+                survey_response_data[attr_name] = int(row[col_name])
+        
+        survey_response_record = models.SurveyResponse(**survey_response_data)
+        db.add(survey_response_record)
+        # ★★★ デバッグログポイント 1 ★★★
+        # SurveyResponseオブジェクトをDBセッションに追加した直後。
+        # この時点ではまだIDは確定していない可能性がある。
+        logger.debug("SurveyResponse to be added: %s", survey_response_record.__dict__)
+
+        # 2. 自由記述コメントを Comment テーブルに保存 (複数レコードの可能性あり)
+        for column_name, comment_text in _extract_comment_texts(
+            row, analyzable_columns
+        ):
+            # このコメントがLLM分析の対象かどうかを判定
+            should_analyze_with_llm = column_name.startswith(LLM_ANALYSIS_TARGET_PREFIX)
+
             total_comments += 1
 
-            analysis_result = analyze_comment(comment_text)
+            analysis_result = analyze_comment(
+                comment_text,
+                course_name=file_record.course_name,
+                question_text=column_name,
+                # LLM分析が不要な場合は、フラグを渡して処理をスキップさせる
+                skip_llm_analysis=not should_analyze_with_llm,
+            )
             if analysis_result.warnings:
                 logger.warning(
                     "LLM warnings for comment: %s",
                     "; ".join(analysis_result.warnings),
                 )
 
-            processed_comments += 1
+            # ★★★ デバッグログポイント 2 ★★★
+            # Commentオブジェクトを作成する直前のデータを確認する。
+            # survey_response_record.id が正しく取得できているかが重要。
+            db.flush()  # survey_response_record.id をデータベースセッション内で確定させる
+            logger.debug(
+                "Creating Comment with survey_response_id: %s", survey_response_record.id
+            )
             db.add(
                 models.Comment(
+                    survey_response_id=survey_response_record.id,
                     file_id=file_record.file_id,
+                    account_id=account_id,
+                    account_name=account_name,
+                    question_text=column_name,
                     comment_text=comment_text,
                     llm_category=analysis_result.category,
                     llm_sentiment=analysis_result.sentiment_normalized.value
@@ -69,6 +130,7 @@ def analyze_and_store_comments(
                     processed_at=datetime.utcnow(),
                 )
             )
+            processed_comments += 1
 
     file_record.total_rows = total_comments
     file_record.processed_rows = processed_comments
@@ -124,11 +186,11 @@ def _prepare_csv_reader(
         )
 
     analyzable_columns = [
-        name for name in normalized_fieldnames if name.startswith(COMMENT_ANALYSIS_PREFIX)
+        name for name in normalized_fieldnames if name.startswith(COMMENT_SAVE_TARGET_PREFIXES)
     ]
     if not analyzable_columns:
         raise CsvValidationError(
-            "CSV must contain at least one column whose header starts with '（任意）'."
+            "CSV must contain at least one column whose header starts with '（任意）' or '【必須】'."
         )
 
     csv_reader.fieldnames = normalized_fieldnames
@@ -141,12 +203,12 @@ def _prepare_csv_reader(
 
 def _extract_comment_texts(
     row: dict, analyzable_columns: Iterable[str]
-) -> List[str]:
-    comment_texts: List[str] = []
+) -> List[tuple[str, str]]:
+    comment_texts: List[tuple[str, str]] = []
     for column in analyzable_columns:
         value = _normalize_cell(row.get(column))
         if value:
-            comment_texts.append(value)
+            comment_texts.append((column, value))
     return comment_texts
 
 

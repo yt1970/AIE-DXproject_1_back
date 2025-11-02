@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.db import models
 from app.db.session import get_db
@@ -92,6 +93,23 @@ async def upload_and_enqueue_analysis(
         db.add(new_file_record)
         db.commit()
         db.refresh(new_file_record)
+    except IntegrityError:
+        db.rollback()
+        # 競合した既存のレコードを検索して、より詳細なエラー情報を提供する
+        existing_file = (
+            db.query(models.UploadedFile)
+            .filter_by(
+                course_name=metadata.course_name,
+                lecture_date=metadata.lecture_date,
+                lecture_number=metadata.lecture_number,
+            )
+            .first()
+        )
+        detail = "A file for this course, date, and lecture number already exists."
+        if existing_file:
+            detail += f" The conflicting file_id is {existing_file.file_id}."
+
+        raise HTTPException(status_code=409, detail=detail)
     except Exception as exc:
         db.rollback()
         raise HTTPException(

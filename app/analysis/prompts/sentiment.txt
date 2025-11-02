@@ -1,0 +1,12 @@
+コメントの感情を分析してください。
+
+## 指示
+- `sentiment`キーを持つJSONオブジェクトで回答してください。
+- `sentiment`の値は、'positive', 'negative', 'neutral' のいずれかです。
+
+## 出力例
+```json
+{
+  "sentiment": "negative"
+}
+```

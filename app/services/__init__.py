@@ -1,6 +1,6 @@
-"""Service layer utilities for external integrations."""
+from __future__ import annotations
 
-from .llm_client import (  # noqa: F401
+from .llm_client import (
     LLMAnalysisResult,
     LLMClient,
     LLMClientConfig,
@@ -9,11 +9,7 @@ from .llm_client import (  # noqa: F401
     LLMTimeoutError,
     build_default_llm_config,
 )
-from .storage import (  # noqa: F401
-    StorageError,
-    clear_storage_client_cache,
-    get_storage_client,
-)
+from .storage import StorageError, get_storage_client
 
 __all__ = [
     "LLMAnalysisResult",
@@ -25,5 +21,4 @@ __all__ = [
     "build_default_llm_config",
     "StorageError",
     "get_storage_client",
-    "clear_storage_client_cache",
 ]
