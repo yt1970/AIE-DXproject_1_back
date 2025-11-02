@@ -8,6 +8,7 @@
 # ----------------------------------------------------------------------
 
 from typing import List
+import logging
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session, contains_eager
@@ -22,6 +23,7 @@ from app.schemas.comment import CommentAnalysisSchema
 # ルーターの初期化
 # ----------------------------------------------------------------------
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ----------------------------------------------------------------------
 # エンドポイントの定義
@@ -59,5 +61,19 @@ def get_course_comments(
         .limit(limit)
         .all()
     )
+
+    # ★★★ デバッグログポイント 4: DBから取得したオブジェクト内容を詳細に表示 ★★★
+    # DBから取得した最初のCommentオブジェクトと、関連するSurveyResponseの内容をログに出力します。
+    if comments_with_scores:
+        first_comment = comments_with_scores[0]
+        logger.info("--- Fetched data from DB for API response ---")
+        logger.info("First Comment object from DB: %s", first_comment.__dict__)
+        if first_comment.survey_response:
+            logger.info(
+                "Attached SurveyResponse object: %s",
+                first_comment.survey_response.__dict__,
+            )
+        else:
+            logger.info("No SurveyResponse attached to the first comment.")
 
     return comments_with_scores

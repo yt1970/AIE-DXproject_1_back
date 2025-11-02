@@ -143,31 +143,28 @@ class LLMClient:
 
         if self.config.provider == "mock":
             # モックの場合、分析タイプに関わらず固定値を返す
-            mock_raw = {"provider": "mock", "comment": comment_text, "analysis_type": analysis_type}
-            mock_warnings = ["LLM provider is 'mock'; returning default analysis."]
-
-            if analysis_type == "sentiment":
-                return LLMAnalysisResult(sentiment="neutral", raw=mock_raw, warnings=mock_warnings)
-            if analysis_type == "importance":
-                return LLMAnalysisResult(importance_level="low", importance_score=0.1, raw=mock_raw, warnings=mock_warnings)
-            if analysis_type == "categorization":
-                return LLMAnalysisResult(category="その他", tags=["mock"], raw=mock_raw, warnings=mock_warnings)
-            if analysis_type == "risk_assessment":
-                return LLMAnalysisResult(risk_level="none", is_safe=True, raw=mock_raw, warnings=mock_warnings)
-            
-            # full_analysis または未知のタイプの場合
-            logger.debug("LLM provider set to 'mock'; returning full analysis result as fallback.")
-            return LLMAnalysisResult(
-                category="その他",
-                importance_level="low",
-                importance_score=0.0,
-                risk_level="none",
-                sentiment="neutral",
-                is_safe=True,
-                summary=None,
-                raw=mock_raw,
-                warnings=mock_warnings,
+            logger.debug(
+                "LLM provider is 'mock'. Returning mock response for task: %s",
+                analysis_type,
             )
+            mock_payload: Dict[str, Any] = {}
+            if analysis_type == "sentiment":
+                mock_payload = {"sentiment": "neutral"}
+            elif analysis_type == "importance":
+                mock_payload = {"importance_level": "low", "importance_score": 0.1}
+            elif analysis_type == "categorization":
+                mock_payload = {"category": "その他", "tags": ["mock"]}
+            elif analysis_type == "risk_assessment":
+                mock_payload = {"risk_level": "none", "is_safe": True}
+            else:  # full_analysis or unknown
+                mock_payload = {
+                    "category": "その他", "sentiment": "neutral", "importance_level": "low",
+                    "importance_score": 0.1, "risk_level": "none", "is_safe": True,
+                    "summary": comment_text[:50], "tags": [],
+                }
+            # 実際のLLM応答にはrawやwarningsは含まれないため、ここでは返さない
+            # これらは呼び出し元でエラーハンドリングの結果として追加される
+            return LLMAnalysisResult.model_validate(mock_payload)
 
         payload = self._build_payload(
             comment_text,
@@ -190,8 +187,14 @@ class LLMClient:
         except httpx.TimeoutException as exc:
             raise LLMTimeoutError("LLM API call timed out") from exc
         except httpx.HTTPStatusError as exc:
+            # エラー応答の本文から、より詳細な情報を取得しようと試みる
+            try:
+                error_details = exc.response.json()
+            except json.JSONDecodeError:
+                error_details = exc.response.text
             raise LLMClientError(
                 f"LLM API returned HTTP error: {exc.response.status_code}"
+                f"LLM API returned HTTP error: {exc.response.status_code} - {error_details}"
             ) from exc
         except httpx.HTTPError as exc:
             raise LLMClientError(f"LLM API communication error: {exc!r}") from exc

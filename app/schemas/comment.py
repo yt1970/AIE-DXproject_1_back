@@ -38,6 +38,7 @@ class AnalysisStatusResponse(BaseModel):
 
 # 📝 (出力) 分析結果（コメント一覧）のスキーマ
 class CommentAnalysisSchema(BaseModel):
+    # ユーザー情報をCommentモデルから直接取得する
     account_id: Optional[str] = None
     account_name: Optional[str] = None
     question_text: Optional[str] = None

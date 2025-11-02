@@ -32,7 +32,7 @@ def analyze_with_llm(
         "risk_assessment": {"risk_level", "is_safe"},
     }
     # full_analysisは全てのキーを担当する可能性がある
-    all_known_keys = set.union(*analysis_tasks.values())
+    all_known_keys = set.union(*analysis_tasks.values(), {"summary"})
     analysis_tasks["full_analysis"] = all_known_keys
 
     merged_results: Dict[str, Any] = {}

@@ -62,8 +62,34 @@ def analyze_and_store_comments(
     }
 
     for row in csv_reader:
-        account_id = row.get("account_id")
-        account_name = row.get("account_name")
+        # ★★★ デバッグログポイント 1: CSVの1行を読み込んだ直後の生データを表示 ★★★
+        # これで、CSVのヘッダー名が正しく認識されているか、値が空でないかを確認します。
+        logger.info("--- Processing new CSV row ---")
+        logger.info("Raw row data from CSV: %s", row)
+
+        # ★★★ 修正点 ★★★
+        # 本番用の日本語ヘッダー名と、開発用の英語キー名の両方に対応する。
+        # ヘッダー名の揺れ（間の空白など）を吸収するため、複数の候補キーで検索し、その過程をログに出力する。
+        def get_value_from_keys(row_dict, keys):
+            for key in keys:
+                logger.info("  - Checking for key: '%s'", key)
+                if key in row_dict:
+                    logger.info("    => Found! Value: '%s'", row_dict[key])
+                    return row_dict[key]
+            logger.warning("  - None of the candidate keys found in the row.")
+            return None
+
+        account_id_keys = ["アカウントID", "account_id", "アカウント ID"]
+        account_name_keys = ["アカウント名", "account_name", "アカウント 名"]
+
+        logger.info("--- Attempting to extract 'account_id' ---")
+        account_id = get_value_from_keys(row, account_id_keys)
+        logger.info("--- Attempting to extract 'account_name' ---")
+        account_name = get_value_from_keys(row, account_name_keys)
+
+        # ★★★ デバッグログポイント 2: 抽出したアカウント情報を表示 ★★★
+        # `row.get`の結果、account_idがどうなったかを確認します。
+        logger.info("Extracted account_id: %s, account_name: %s", account_id, account_name)
 
         # 1. 数値評価を SurveyResponse テーブルに保存 (1行につき1レコード)
         survey_response_data = {
@@ -77,10 +103,10 @@ def analyze_and_store_comments(
         
         survey_response_record = models.SurveyResponse(**survey_response_data)
         db.add(survey_response_record)
-        # ★★★ デバッグログポイント 1 ★★★
-        # SurveyResponseオブジェクトをDBセッションに追加した直後。
-        # この時点ではまだIDは確定していない可能性がある。
-        logger.debug("SurveyResponse to be added: %s", survey_response_record.__dict__)
+        # ★★★ 修正点 ★★★
+        # この時点で一度flushを実行し、survey_response_record.id を確定させる。
+        # これにより、後続のCommentオブジェクトが正しいIDを参照できるようになる。
+        db.flush()
 
         # 2. 自由記述コメントを Comment テーブルに保存 (複数レコードの可能性あり)
         for column_name, comment_text in _extract_comment_texts(
@@ -104,36 +130,30 @@ def analyze_and_store_comments(
                     "; ".join(analysis_result.warnings),
                 )
 
-            # ★★★ デバッグログポイント 2 ★★★
-            # Commentオブジェクトを作成する直前のデータを確認する。
-            # survey_response_record.id が正しく取得できているかが重要。
-            db.flush()  # survey_response_record.id をデータベースセッション内で確定させる
-            logger.debug(
-                "Creating Comment with survey_response_id: %s", survey_response_record.id
+            comment_to_add = models.Comment(
+                survey_response_id=survey_response_record.id,
+                file_id=file_record.file_id,
+                account_id=account_id,
+                account_name=account_name,
+                question_text=column_name,
+                comment_text=comment_text,
+                llm_category=analysis_result.category,
+                llm_sentiment=analysis_result.sentiment_normalized.value
+                if analysis_result.sentiment_normalized
+                else None,
+                llm_summary=analysis_result.summary,
+                llm_importance_level=analysis_result.importance_level,
+                llm_importance_score=analysis_result.importance_score,
+                llm_risk_level=analysis_result.risk_level,
+                processed_at=datetime.utcnow(),
             )
-            db.add(
-                models.Comment(
-                    survey_response_id=survey_response_record.id,
-                    file_id=file_record.file_id,
-                    account_id=account_id,
-                    account_name=account_name,
-                    question_text=column_name,
-                    comment_text=comment_text,
-                    llm_category=analysis_result.category,
-                    llm_sentiment=analysis_result.sentiment_normalized.value
-                    if analysis_result.sentiment_normalized
-                    else None,
-                    llm_summary=analysis_result.summary,
-                    llm_importance_level=analysis_result.importance_level,
-                    llm_importance_score=analysis_result.importance_score,
-                    llm_risk_level=analysis_result.risk_level,
-                    processed_at=datetime.utcnow(),
-                )
-            )
-            processed_comments += 1
 
-    file_record.total_rows = total_comments
-    file_record.processed_rows = processed_comments
+            # ★★★ デバッグログポイント 3: DBに保存する直前のオブジェクト内容を表示 ★★★
+            # DBに保存する直前のCommentオブジェクトの内容をログに出力
+            # ここで account_id が None になっていれば、問題はこれより前のステップにあります。
+            logger.info("Attempting to save Comment object with data: %s", comment_to_add.__dict__)
+            db.add(comment_to_add)
+            processed_comments += 1
 
     return total_comments, processed_comments
 
