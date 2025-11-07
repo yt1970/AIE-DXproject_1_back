@@ -26,12 +26,11 @@ NEGATIVE_KEYWORDS = (
     "嫌",
     "最悪",
 )
-CATEGORY_KEYWORDS = {
-    "要望": ("改善", "してほしい", "ほしい", "欲しい", "して欲しい", "希望"),
-    "質問": ("どうして", "なぜ", "教えて", "わからない", "わかりません"),
-    "不具合": ("バグ", "エラー", "落ちる", "動かない", "不具合"),
-    "称賛": ("ありがとう", "感謝", "良かった", "最高"),
-    "苦情": ("不満", "最悪", "腹立つ", "遅い"),
+# 4分類への正規化用キーワード
+FOUR_CATEGORY_KEYWORDS = {
+    "講義資料": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
+    "運営": ("運営", "アナウンス", "連絡", "zoom", "録画", "出欠", "スケジュール", "配信", "会場", "受付"),
+    "講義内容": ("内容", "説明", "構成", "進度", "難易度", "ペース", "事例", "演習", "課題"),
 }
 
 
@@ -46,16 +45,29 @@ def classify_comment(
     return category, sentiment
 
 
-def _determine_category(comment_text: str, llm_output: LLMAnalysisResult) -> str:
-    if llm_output.category:
-        return llm_output.category
+def _normalize_to_four_categories(source: str) -> str | None:
+    if not source:
+        return None
+    lowered = source.lower()
+    for cat, keywords in FOUR_CATEGORY_KEYWORDS.items():
+        for kw in keywords:
+            if kw in source or kw.lower() in lowered:
+                return cat
+    # 単語マッチがなければNone（後段で判定）
+    return None
 
-    lowered = comment_text.lower()
-    for category, keywords in CATEGORY_KEYWORDS.items():
-        if any(keyword in comment_text for keyword in keywords):
-            return category
-        if any(keyword.lower() in lowered for keyword in keywords):
-            return category
+
+def _determine_category(comment_text: str, llm_output: LLMAnalysisResult) -> str:
+    # まずLLMのカテゴリを4分類に正規化する試み
+    normalized = _normalize_to_four_categories(llm_output.category or "")
+    if normalized:
+        return normalized
+
+    # LLMカテゴリが空/不明なら、本文から推定
+    normalized_from_text = _normalize_to_four_categories(comment_text)
+    if normalized_from_text:
+        return normalized_from_text
+
     return "その他"
 
 

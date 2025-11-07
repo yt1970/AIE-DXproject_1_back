@@ -2,17 +2,22 @@
 
 import json
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.comment import UploadRequestMetadata, UploadResponse
+from app.schemas.comment import (
+    DeleteUploadResponse,
+    DuplicateCheckResponse,
+    UploadRequestMetadata,
+    UploadResponse,
+)
 from app.services import StorageError, get_storage_client
 from app.services.upload_pipeline import (
     CsvValidationError,
@@ -27,6 +32,144 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 QUEUED_STATUS = "QUEUED"
+@router.get("/uploads/check-duplicate", response_model=DuplicateCheckResponse)
+def check_duplicate_upload(
+    *,
+    course_name: str,
+    lecture_date: date,
+    lecture_number: int,
+    db: Session = Depends(get_db),
+) -> DuplicateCheckResponse:
+    """
+    講義(講座名・日付・回)の重複有無を事前チェックする。
+    既に登録済みなら file_id を返す。
+    """
+    existing = (
+        db.query(models.UploadedFile)
+        .filter_by(
+            course_name=course_name,
+            lecture_date=lecture_date,
+            lecture_number=lecture_number,
+        )
+        .first()
+    )
+    if not existing:
+        return DuplicateCheckResponse(exists=False, file_id=None)
+    return DuplicateCheckResponse(exists=True, file_id=existing.file_id)
+
+
+@router.delete("/uploads/{file_id}", response_model=DeleteUploadResponse)
+def delete_uploaded_analysis(
+    file_id: int,
+    db: Session = Depends(get_db),
+) -> DeleteUploadResponse:
+    """
+    誤ってアップロードした分析対象および結果（関連コメント/調査回答）を削除する。
+    進行中(PROCESSING)の場合は競合とする。
+    """
+    uploaded = (
+        db.query(models.UploadedFile)
+        .filter(models.UploadedFile.file_id == file_id)
+        .first()
+    )
+    if not uploaded:
+        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+
+    if uploaded.status == "PROCESSING":
+        raise HTTPException(status_code=409, detail="File is currently processing")
+
+    removed_comments = (
+        db.query(models.Comment)
+        .filter(models.Comment.file_id == file_id)
+        .delete(synchronize_session=False)
+    )
+    removed_survey_responses = (
+        db.query(models.SurveyResponse)
+        .filter(models.SurveyResponse.file_id == file_id)
+        .delete(synchronize_session=False)
+    )
+
+    # 物理ファイルの削除（可能な場合）
+    try:
+        if uploaded.s3_key:
+            storage_client = get_storage_client()
+            storage_client.delete(uri=uploaded.s3_key)
+    except Exception:
+        # ストレージ削除エラーは致命的ではないためログのみ（ここでは簡略化）
+        pass
+
+    db.delete(uploaded)
+    db.commit()
+
+    return DeleteUploadResponse(
+        file_id=file_id,
+        deleted=True,
+        removed_comments=removed_comments or 0,
+        removed_survey_responses=removed_survey_responses or 0,
+    )
+
+
+@router.post("/uploads/{file_id}/finalize")
+def finalize_analysis(
+    file_id: int,
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    速報版(preliminary)のコメントを確定版(final)として固定化する。
+    既存のfinalデータがある場合は置き換える。
+    """
+    uploaded = (
+        db.query(models.UploadedFile)
+        .filter(models.UploadedFile.file_id == file_id)
+        .first()
+    )
+    if not uploaded:
+        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+
+    # 既存のfinalを削除
+    db.query(models.Comment).filter(
+        models.Comment.file_id == file_id,
+        models.Comment.analysis_version == "final",
+    ).delete(synchronize_session=False)
+
+    # preliminaryをコピー
+    prelim_comments = (
+        db.query(models.Comment)
+        .filter(
+            models.Comment.file_id == file_id,
+            (models.Comment.analysis_version == "preliminary")
+            | (models.Comment.analysis_version.is_(None)),
+        )
+        .all()
+    )
+
+    created = 0
+    for c in prelim_comments:
+        clone = models.Comment(
+            file_id=c.file_id,
+            survey_response_id=c.survey_response_id,
+            account_id=c.account_id,
+            account_name=c.account_name,
+            question_text=c.question_text,
+            comment_text=c.comment_text,
+            llm_category=c.llm_category,
+            llm_sentiment=c.llm_sentiment,
+            llm_summary=c.llm_summary,
+            llm_importance_level=c.llm_importance_level,
+            llm_importance_score=c.llm_importance_score,
+            llm_risk_level=c.llm_risk_level,
+            processed_at=c.processed_at,
+            analysis_version="final",
+        )
+        db.add(clone)
+        created += 1
+
+    uploaded.finalized_at = datetime.utcnow()
+    db.add(uploaded)
+    db.commit()
+
+    return {"file_id": file_id, "finalized": True, "final_count": created}
+
 
 
 @router.post("/uploads", response_model=UploadResponse)
@@ -80,6 +223,7 @@ async def upload_and_enqueue_analysis(
         course_name=metadata.course_name,
         lecture_date=metadata.lecture_date,
         lecture_number=metadata.lecture_number,
+        lecture_id=metadata.lecture_id,
         status=QUEUED_STATUS,
         s3_key=stored_uri,
         upload_timestamp=datetime.utcnow(),

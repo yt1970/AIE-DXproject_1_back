@@ -5,11 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import ValidationError
 
-from app.services import (
-    LLMAnalysisResult,
-    LLMClient,
-    LLMClientError,
-)
+from app.services import LLMAnalysisResult, LLMClient, LLMClientError
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +51,9 @@ def analyze_with_llm(
                 if key in task_keys:
                     merged_results[key] = response_data[key]
                 else:
-                    merged_warnings.append(f"Task '{task_name}' returned unexpected key: '{key}'")
+                    merged_warnings.append(
+                        f"Task '{task_name}' returned unexpected key: '{key}'"
+                    )
 
             merged_warnings.extend(result.warnings)
             merged_raw[task_name] = result.raw

@@ -39,7 +39,9 @@ def apply_migrations(engine: Engine) -> None:
             column["name"] for column in inspector.get_columns("survey_response")
         }
         _apply_statements(
-            engine, _build_survey_response_migrations(survey_response_columns), table="survey_response"
+            engine,
+            _build_survey_response_migrations(survey_response_columns),
+            table="survey_response",
         )
 
     # Commentテーブルのマイグレーションを適用
@@ -54,7 +56,9 @@ def apply_migrations(engine: Engine) -> None:
                 column["name"] for column in inspector.get_columns("comment")
             }
         _apply_statements(
-            engine, _build_comment_migrations(comment_columns), table="comment"
+            engine,
+            _build_comment_migrations(comment_columns),
+            table="comment",
         )
     else:
         logger.info("Table 'comment' not found; skipping comment migrations.")
@@ -73,6 +77,14 @@ def apply_migrations(engine: Engine) -> None:
             _build_uploaded_file_migrations(uploaded_columns),
             table="uploaded_file",
         )
+    # Create lecture_metrics table if missing
+    if "lecture_metrics" not in table_names:
+        _create_lecture_metrics_table(engine)
+
+    # Create lecture master table if missing
+    if "lecture" not in table_names:
+        _create_lecture_table(engine)
+
     else:
         logger.info(
             "Table 'uploaded_file' not found; skipping storage column migration."
@@ -126,6 +138,9 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     if "llm_risk_level" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_risk_level VARCHAR(20)")
 
+    if "analysis_version" not in existing_columns:
+        statements.append("ALTER TABLE comment ADD COLUMN analysis_version VARCHAR(20)")
+
     return statements
 
 
@@ -175,6 +190,20 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
     if "processed_rows" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN processed_rows INTEGER")
 
+    if "finalized_at" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN finalized_at TIMESTAMP")
+
+    if "lecture_id" not in existing_columns:
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN lecture_id INTEGER REFERENCES lecture(id)"
+        )
+
+    if "academic_year" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN academic_year VARCHAR(10)")
+
+    if "period" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN period VARCHAR(100)")
+
     return statements
 
 
@@ -206,6 +235,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         Column("llm_importance_score", Float),
         Column("llm_risk_level", String(20)),
         Column("processed_at", TIMESTAMP),
+        Column("analysis_version", String(20)),
     )
 
     comment_text_source = None
@@ -250,6 +280,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
                     "llm_importance_score",
                     "llm_risk_level",
                     "processed_at",
+                "analysis_version",
                 ],
                 select_stmt,
             )
@@ -268,3 +299,36 @@ def _drop_student_table(engine: Engine) -> None:
     logger.info("Dropping legacy 'student' table.")
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS student"))
+
+
+def _create_lecture_metrics_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        logger.info("Creating table 'lecture_metrics'.")
+        connection.execute(text(
+            """
+            CREATE TABLE lecture_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_file(file_id),
+                zoom_participants INTEGER,
+                recording_views INTEGER,
+                updated_at TIMESTAMP
+            )
+            """
+        ))
+
+
+def _create_lecture_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        logger.info("Creating table 'lecture'.")
+        connection.execute(text(
+            """
+            CREATE TABLE lecture (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_name VARCHAR(255) NOT NULL,
+                academic_year INTEGER,
+                period VARCHAR(100) NOT NULL,
+                category VARCHAR(20),
+                CONSTRAINT uq_lecture_identity UNIQUE (course_name, academic_year, period)
+            )
+            """
+        ))
