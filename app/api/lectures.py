@@ -8,8 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.course import LectureCategory, LectureCreate, LectureInfo, LectureUpdate
-
+from app.schemas.course import (
+    LectureCategory,
+    LectureCreate,
+    LectureInfo,
+    LectureUpdate,
+)
 
 router = APIRouter()
 

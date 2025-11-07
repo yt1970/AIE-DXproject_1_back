@@ -8,7 +8,6 @@ from app.db import models
 from app.db.session import get_db
 from app.schemas.course import LectureCategory, LectureInfo
 
-
 router = APIRouter()
 
 
