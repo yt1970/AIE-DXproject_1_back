@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 # --- 分割したルーターと設定関連をインポート ---
-from app.api import analysis, comments, upload, courses, metrics
+from app.api import analysis, comments, courses, metrics, upload
 from app.core.settings import get_settings
 from app.db.migrations import apply_migrations
 from app.db.session import engine

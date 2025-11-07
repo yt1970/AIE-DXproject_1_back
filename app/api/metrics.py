@@ -7,7 +7,6 @@ from app.db import models
 from app.db.session import get_db
 from app.schemas.comment import LectureMetricsPayload, LectureMetricsResponse
 
-
 router = APIRouter()
 
 
