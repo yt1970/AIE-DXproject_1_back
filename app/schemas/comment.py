@@ -4,14 +4,14 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, computed_field
 
 
-# 📤 (出力) ファイルアップロード成功時の応答スキーマ
+# (出力) ファイルアップロード成功時の応答スキーマ
 class UploadResponse(BaseModel):
     file_id: int
     status_url: str
     message: str
 
 
-# 📥 (入力) ファイルアップロード時に必要なメタデータスキーマ
+# (入力) ファイルアップロード時に必要なメタデータスキーマ
 class UploadRequestMetadata(BaseModel):
     # 講義の複合識別子をフロントエンドから受け取る
     course_name: str
@@ -22,7 +22,7 @@ class UploadRequestMetadata(BaseModel):
     uploader_id: Optional[int] = None
 
 
-# 📊 (出力) ステータス確認時の応答スキーマ
+# (出力) ステータス確認時の応答スキーマ
 class AnalysisStatusResponse(BaseModel):
     file_id: int
     status: str
@@ -35,7 +35,7 @@ class AnalysisStatusResponse(BaseModel):
     error_message: Optional[str] = None
 
 
-# 📝 (出力) 分析結果（コメント一覧）のスキーマ
+# (出力) 分析結果（コメント一覧）のスキーマ
 class CommentAnalysisSchema(BaseModel):
     # ユーザー情報をCommentモデルから直接取得する
     account_id: Optional[str] = None
@@ -80,13 +80,13 @@ class CommentAnalysisSchema(BaseModel):
     survey_response: Optional[Any] = Field(default=None, exclude=True)
 
 
-# ✅ (出力) 講義重複チェックの応答スキーマ
+# (出力) 講義重複チェックの応答スキーマ
 class DuplicateCheckResponse(BaseModel):
     exists: bool
     file_id: Optional[int] = None
 
 
-# 🗑️ (出力) アップロード削除APIの応答スキーマ
+# (出力) アップロード削除APIの応答スキーマ
 class DeleteUploadResponse(BaseModel):
     file_id: int
     deleted: bool
@@ -94,7 +94,7 @@ class DeleteUploadResponse(BaseModel):
     removed_survey_responses: int
 
 
-# 📈 (入力/出力) 講義メトリクス（手動入力）
+# (入力/出力) 講義メトリクス（手動入力）
 class LectureMetricsPayload(BaseModel):
     zoom_participants: Optional[int] = None
     recording_views: Optional[int] = None
