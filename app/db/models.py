@@ -46,6 +46,8 @@ class UploadedFile(Base):
     course_name = Column(String(255), nullable=False)
     lecture_date = Column(Date, nullable=False)
     lecture_number = Column(Integer, nullable=False)
+    academic_year = Column(String(10))
+    period = Column(String(100))
 
     # その他の属性
     status = Column(
@@ -160,3 +162,17 @@ class LectureMetrics(Base):
     updated_at = Column(TIMESTAMP)
 
     uploaded_file = relationship("UploadedFile", back_populates="metrics")
+
+
+class Lecture(Base):
+    __tablename__ = "lecture"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    course_name = Column(String(255), nullable=False)
+    academic_year = Column(Integer)
+    period = Column(String(100))  # 任意の書式の期間文字列
+    category = Column(String(20))  # 講義内容/講義資料/運営/その他
+
+    __table_args__ = (
+        UniqueConstraint("course_name", "academic_year", "period", name="uq_lecture_identity"),
+    )

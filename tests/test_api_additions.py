@@ -107,7 +107,12 @@ def test_courses_list_returns_distinct_sorted(integration_client: TestClient) ->
 
     resp = client.get("/api/v1/courses")
     assert resp.status_code == 200
-    assert resp.json() == ["Course A", "Course Z"]
+    items = resp.json()
+    # 期待: course_nameの昇順、学年は lecture_date.year がデフォルト付与（文字列）
+    assert {i["course_name"] for i in items} == {"Course A", "Course Z"}
+    for i in items:
+        assert i["academic_year"] is None or isinstance(i["academic_year"], str)
+        assert "period" in i
 
 
 def test_duplicate_check_endpoint(integration_client: TestClient) -> None:

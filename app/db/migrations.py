@@ -81,6 +81,10 @@ def apply_migrations(engine: Engine) -> None:
     if "lecture_metrics" not in table_names:
         _create_lecture_metrics_table(engine)
 
+    # Create lecture master table if missing
+    if "lecture" not in table_names:
+        _create_lecture_table(engine)
+
     else:
         logger.info(
             "Table 'uploaded_file' not found; skipping storage column migration."
@@ -188,6 +192,12 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
 
     if "finalized_at" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN finalized_at TIMESTAMP")
+
+    if "academic_year" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN academic_year VARCHAR(10)")
+
+    if "period" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN period VARCHAR(100)")
 
     return statements
 
@@ -297,6 +307,23 @@ def _create_lecture_metrics_table(engine: Engine) -> None:
                 zoom_participants INTEGER,
                 recording_views INTEGER,
                 updated_at TIMESTAMP
+            )
+            """
+        ))
+
+
+def _create_lecture_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        logger.info("Creating table 'lecture'.")
+        connection.execute(text(
+            """
+            CREATE TABLE lecture (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                course_name VARCHAR(255) NOT NULL,
+                academic_year INTEGER,
+                period VARCHAR(100),
+                category VARCHAR(20),
+                CONSTRAINT uq_lecture_identity UNIQUE (course_name, academic_year, period)
             )
             """
         ))
