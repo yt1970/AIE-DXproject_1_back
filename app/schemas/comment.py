@@ -17,6 +17,7 @@ class UploadRequestMetadata(BaseModel):
     course_name: str
     lecture_date: date  # 日付型
     lecture_number: int
+    lecture_id: Optional[int] = None
 
     # 誰がアップロードしたかの情報（任意）
     uploader_id: Optional[int] = None
@@ -103,3 +104,9 @@ class LectureMetricsPayload(BaseModel):
 class LectureMetricsResponse(LectureMetricsPayload):
     file_id: int
     updated_at: Optional[datetime] = None
+
+
+class CourseListingItem(BaseModel):
+    course_name: str
+    academic_year: Optional[str] = None
+    period: Optional[str] = None

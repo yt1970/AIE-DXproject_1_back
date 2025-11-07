@@ -223,6 +223,7 @@ async def upload_and_enqueue_analysis(
         course_name=metadata.course_name,
         lecture_date=metadata.lecture_date,
         lecture_number=metadata.lecture_number,
+        lecture_id=metadata.lecture_id,
         status=QUEUED_STATUS,
         s3_key=stored_uri,
         upload_timestamp=datetime.utcnow(),

@@ -193,6 +193,11 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
     if "finalized_at" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN finalized_at TIMESTAMP")
 
+    if "lecture_id" not in existing_columns:
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN lecture_id INTEGER REFERENCES lecture(id)"
+        )
+
     if "academic_year" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN academic_year VARCHAR(10)")
 
@@ -321,7 +326,7 @@ def _create_lecture_table(engine: Engine) -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 course_name VARCHAR(255) NOT NULL,
                 academic_year INTEGER,
-                period VARCHAR(100),
+                period VARCHAR(100) NOT NULL,
                 category VARCHAR(20),
                 CONSTRAINT uq_lecture_identity UNIQUE (course_name, academic_year, period)
             )

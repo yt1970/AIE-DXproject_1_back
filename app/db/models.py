@@ -60,6 +60,7 @@ class UploadedFile(Base):
     total_rows = Column(Integer)
     processed_rows = Column(Integer)
     task_id = Column(String(255))
+    lecture_id = Column(Integer, ForeignKey("lecture.id"))
     processing_started_at = Column(TIMESTAMP)
     processing_completed_at = Column(TIMESTAMP)
     error_message = Column(Text)
@@ -170,7 +171,7 @@ class Lecture(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     course_name = Column(String(255), nullable=False)
     academic_year = Column(Integer)
-    period = Column(String(100))  # 任意の書式の期間文字列
+    period = Column(String(100), nullable=False)  # 任意の書式の期間文字列
     category = Column(String(20))  # 講義内容/講義資料/運営/その他
 
     __table_args__ = (
