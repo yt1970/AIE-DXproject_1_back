@@ -39,7 +39,9 @@ def apply_migrations(engine: Engine) -> None:
             column["name"] for column in inspector.get_columns("survey_response")
         }
         _apply_statements(
-            engine, _build_survey_response_migrations(survey_response_columns), table="survey_response"
+            engine,
+            _build_survey_response_migrations(survey_response_columns),
+            table="survey_response",
         )
 
     # Commentテーブルのマイグレーションを適用
@@ -54,7 +56,9 @@ def apply_migrations(engine: Engine) -> None:
                 column["name"] for column in inspector.get_columns("comment")
             }
         _apply_statements(
-            engine, _build_comment_migrations(comment_columns), table="comment"
+            engine,
+            _build_comment_migrations(comment_columns),
+            table="comment",
         )
     else:
         logger.info("Table 'comment' not found; skipping comment migrations.")

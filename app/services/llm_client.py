@@ -193,8 +193,10 @@ class LLMClient:
             except json.JSONDecodeError:
                 error_details = exc.response.text
             raise LLMClientError(
-                f"LLM API returned HTTP error: {exc.response.status_code}"
-                f"LLM API returned HTTP error: {exc.response.status_code} - {error_details}"
+                (
+                    f"LLM API returned HTTP error: {exc.response.status_code} - "
+                    f"{error_details}"
+                )
             ) from exc
         except httpx.HTTPError as exc:
             raise LLMClientError(f"LLM API communication error: {exc!r}") from exc

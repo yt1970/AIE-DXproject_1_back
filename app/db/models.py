@@ -78,7 +78,9 @@ class UploadedFile(Base):
     survey_responses = relationship(
         "SurveyResponse", back_populates="uploaded_file"
     )
-    metrics = relationship("LectureMetrics", uselist=False, back_populates="uploaded_file")
+    metrics = relationship(
+        "LectureMetrics", uselist=False, back_populates="uploaded_file"
+    )
 
 
 class SurveyResponse(Base):
@@ -149,7 +151,9 @@ class LectureMetrics(Base):
     __tablename__ = "lecture_metrics"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    file_id = Column(Integer, ForeignKey("uploaded_file.file_id"), nullable=False, unique=True)
+    file_id = Column(
+        Integer, ForeignKey("uploaded_file.file_id"), nullable=False, unique=True
+    )
 
     zoom_participants = Column(Integer)
     recording_views = Column(Integer)
