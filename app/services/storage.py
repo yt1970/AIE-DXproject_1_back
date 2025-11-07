@@ -37,6 +37,9 @@ class StorageClient:
     def load(self, *, uri: str) -> bytes:
         raise NotImplementedError
 
+    def delete(self, *, uri: str) -> None:
+        raise NotImplementedError
+
 
 class LocalStorageClient(StorageClient):
     """Persist files on the local filesystem (useful for development/testing)."""
@@ -68,6 +71,19 @@ class LocalStorageClient(StorageClient):
             return safe_path.read_bytes()
         except FileNotFoundError as exc:
             raise StorageError(f"Stored file not found: {key}") from exc
+
+    def delete(self, *, uri: str) -> None:
+        scheme, key = _split_uri(uri)
+        if scheme != "local":
+            raise StorageError(
+                f"Unsupported URI scheme '{scheme}' for LocalStorageClient."
+            )
+        safe_path = _safe_join(self.base_directory, key)
+        try:
+            safe_path.unlink(missing_ok=True)
+        except Exception as exc:  # pragma: no cover
+            logger.exception("Failed to delete local file: %s", safe_path)
+            raise StorageError(f"Failed to delete local file: {exc}") from exc
 
 
 class S3StorageClient(StorageClient):
@@ -133,6 +149,16 @@ class S3StorageClient(StorageClient):
         if body is None:
             raise StorageError("S3 object body is empty.")
         return body.read()
+
+    def delete(self, *, uri: str) -> None:
+        bucket, key = _split_s3_uri(uri, default_bucket=self.bucket)
+        try:
+            self.client.delete_object(Bucket=bucket, Key=key)
+        except (BotoCoreError, ClientError) as exc:
+            logger.exception(
+                "Failed to delete file from S3: bucket=%s key=%s", bucket, key
+            )
+            raise StorageError(f"Failed to delete file from S3: {exc}") from exc
 
 
 def _safe_join(base_directory: Path, relative_path: str) -> Path:

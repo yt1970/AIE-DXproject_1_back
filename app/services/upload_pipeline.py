@@ -146,6 +146,7 @@ def analyze_and_store_comments(
                 llm_importance_score=analysis_result.importance_score,
                 llm_risk_level=analysis_result.risk_level,
                 processed_at=datetime.utcnow(),
+                analysis_version="preliminary",
             )
 
             # ★★★ デバッグログポイント 3: DBに保存する直前のオブジェクト内容を表示 ★★★

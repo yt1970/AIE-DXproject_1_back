@@ -61,6 +61,7 @@ class UploadedFile(Base):
     processing_started_at = Column(TIMESTAMP)
     processing_completed_at = Column(TIMESTAMP)
     error_message = Column(Text)
+    finalized_at = Column(TIMESTAMP)
 
     # 複合ユニーク制約の定義 (これで重複登録を防ぐ)
     __table_args__ = (
@@ -77,6 +78,7 @@ class UploadedFile(Base):
     survey_responses = relationship(
         "SurveyResponse", back_populates="uploaded_file"
     )
+    metrics = relationship("LectureMetrics", uselist=False, back_populates="uploaded_file")
 
 
 class SurveyResponse(Base):
@@ -134,9 +136,23 @@ class Comment(Base):
     llm_importance_score = Column(Float)
     llm_risk_level = Column(String(20))
     processed_at = Column(TIMESTAMP)  # LLM処理完了日時
+    analysis_version = Column(String(20))  # 'preliminary' or 'final'
 
     # リレーションの定義
     uploaded_file = relationship("UploadedFile", back_populates="comments")
     survey_response = relationship(
         "SurveyResponse", foreign_keys=[survey_response_id], backref="comments"
     )
+
+
+class LectureMetrics(Base):
+    __tablename__ = "lecture_metrics"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_id = Column(Integer, ForeignKey("uploaded_file.file_id"), nullable=False, unique=True)
+
+    zoom_participants = Column(Integer)
+    recording_views = Column(Integer)
+    updated_at = Column(TIMESTAMP)
+
+    uploaded_file = relationship("UploadedFile", back_populates="metrics")

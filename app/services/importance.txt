@@ -1,4 +1,0 @@
-コメントの重要度を分析してください。
-結果は以下のキーを持つJSONオブジェクトで返してください。
-- importance_level: 重要度（'low', 'medium', 'high'）
-- importance_score: 重要度スコア（0.0から1.0の数値）

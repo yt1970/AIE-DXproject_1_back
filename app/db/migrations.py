@@ -73,6 +73,10 @@ def apply_migrations(engine: Engine) -> None:
             _build_uploaded_file_migrations(uploaded_columns),
             table="uploaded_file",
         )
+    # Create lecture_metrics table if missing
+    if "lecture_metrics" not in table_names:
+        _create_lecture_metrics_table(engine)
+
     else:
         logger.info(
             "Table 'uploaded_file' not found; skipping storage column migration."
@@ -126,6 +130,9 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     if "llm_risk_level" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_risk_level VARCHAR(20)")
 
+    if "analysis_version" not in existing_columns:
+        statements.append("ALTER TABLE comment ADD COLUMN analysis_version VARCHAR(20)")
+
     return statements
 
 
@@ -175,6 +182,9 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
     if "processed_rows" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN processed_rows INTEGER")
 
+    if "finalized_at" not in existing_columns:
+        statements.append("ALTER TABLE uploaded_file ADD COLUMN finalized_at TIMESTAMP")
+
     return statements
 
 
@@ -206,6 +216,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         Column("llm_importance_score", Float),
         Column("llm_risk_level", String(20)),
         Column("processed_at", TIMESTAMP),
+        Column("analysis_version", String(20)),
     )
 
     comment_text_source = None
@@ -250,6 +261,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
                     "llm_importance_score",
                     "llm_risk_level",
                     "processed_at",
+                "analysis_version",
                 ],
                 select_stmt,
             )
@@ -268,3 +280,19 @@ def _drop_student_table(engine: Engine) -> None:
     logger.info("Dropping legacy 'student' table.")
     with engine.begin() as connection:
         connection.execute(text("DROP TABLE IF EXISTS student"))
+
+
+def _create_lecture_metrics_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        logger.info("Creating table 'lecture_metrics'.")
+        connection.execute(text(
+            """
+            CREATE TABLE lecture_metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_file(file_id),
+                zoom_participants INTEGER,
+                recording_views INTEGER,
+                updated_at TIMESTAMP
+            )
+            """
+        ))

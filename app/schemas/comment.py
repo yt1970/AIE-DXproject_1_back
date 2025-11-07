@@ -78,3 +78,28 @@ class CommentAnalysisSchema(BaseModel):
 
     # survey_responseリレーションを読み込むが、JSONには出力しないフィールド
     survey_response: Optional[Any] = Field(default=None, exclude=True)
+
+
+# ✅ (出力) 講義重複チェックの応答スキーマ
+class DuplicateCheckResponse(BaseModel):
+    exists: bool
+    file_id: Optional[int] = None
+
+
+# 🗑️ (出力) アップロード削除APIの応答スキーマ
+class DeleteUploadResponse(BaseModel):
+    file_id: int
+    deleted: bool
+    removed_comments: int
+    removed_survey_responses: int
+
+
+# 📈 (入力/出力) 講義メトリクス（手動入力）
+class LectureMetricsPayload(BaseModel):
+    zoom_participants: Optional[int] = None
+    recording_views: Optional[int] = None
+
+
+class LectureMetricsResponse(LectureMetricsPayload):
+    file_id: int
+    updated_at: Optional[datetime] = None

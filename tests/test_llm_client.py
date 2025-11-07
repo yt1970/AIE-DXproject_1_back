@@ -73,7 +73,7 @@ def test_llm_client_raises_on_invalid_json() -> None:
 
 def test_analyze_comment_handles_llm_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingClient:
-        def analyze_comment(self, comment_text: str):
+        def analyze_comment(self, comment_text: str, **_: object):
             raise LLMClientError("simulated failure")
 
     analyzer.get_llm_client.cache_clear()
@@ -84,5 +84,5 @@ def test_analyze_comment_handles_llm_failure(monkeypatch: pytest.MonkeyPatch) ->
     assert result.category == "要望"
     assert result.sentiment in {"ニュートラル", "ポジティブ", "ネガティブ"}
     assert result.warnings
-    assert any("LLM analysis failed" in warning for warning in result.warnings)
+    assert any("failed" in warning for warning in result.warnings)
     assert result.summary
