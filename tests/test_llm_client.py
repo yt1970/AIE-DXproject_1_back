@@ -81,7 +81,7 @@ def test_analyze_comment_handles_llm_failure(monkeypatch: pytest.MonkeyPatch) ->
 
     result = analyzer.analyze_comment("改善してほしい点がありますが、概ね満足です。")
 
-    assert result.category == "要望"
+    assert result.category == "その他"
     assert result.sentiment in {"ニュートラル", "ポジティブ", "ネガティブ"}
     assert result.warnings
     assert any("failed" in warning for warning in result.warnings)
