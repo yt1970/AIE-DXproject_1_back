@@ -36,7 +36,7 @@ alembic upgrade head
 
 差分からマイグレーションスクリプトを生成する場合は `alembic revision --autogenerate -m "message"` を使用します。生成後は内容を確認し、バージョン管理にコミットしてください。
 
-`.env` はリポジトリにコミットしないでください（`.gitignore` で除外済み）。共有が必要な場合は、`.env.example` をコピーして個々の環境で値を設定してください。
+`.env` はリポジトリにコミットしないでください（`.gitignore` で除外済み）。共有が必要な場合は、本READMEの環境変数一覧を参考に各自の環境で `.env` を作成してください。
 
 ## LLM 連携設定
 
@@ -80,14 +80,11 @@ alembic upgrade head
 │   │   └── github_oidc_role_stack.py # GitHub Actions用IAMロール
 │   └── tests/               # CDKスタックの検証テスト
 │       └── test_synth.py    # テンプレート生成テスト
-├── .github/workflows/       # GitHub Actions ワークフロー
-│   └── ci.yml               # フォーマット・テスト・ECRデプロイ
 ├── Dockerfile               # 本番/ローカル用ビルドレシピ
 ├── docker-compose.yml       # ローカル開発用コンテナ起動設定
 ├── requirements.txt         # アプリケーション依存パッケージ
 ├── requirements-dev.txt     # 開発・テスト用依存パッケージ
 ├── pyproject.toml           # フォーマッタ/pytest 設定
-├── .env.example             # 必須環境変数のサンプル
 └── .gitignore               # Git 管理対象から除外する項目
 ```
 
@@ -96,6 +93,8 @@ alembic upgrade head
 ## システムアーキテクチャ
 
 ### 全体構成図
+
+注: Mermaidの制約により、図中のパスパラメータ表記は {id}/{name} ではなく id/name としています（実際のAPIはパスパラメータを使用）。
 
 ```mermaid
 graph TB
@@ -316,10 +315,15 @@ graph LR
     Settings --> Models
 ```
 
+## コントリビューション
+
+1. フィーチャーブランチを作成してください。
+2. Blackとisortでコードをフォーマットしてください（`black . && isort .`）。
+3. `pytest`を実行してください。
+4. mainブランチへのプルリクエストを開いてください。
+
 ## CI/CD
 
-- GitHub Actions は `pull_request` と `main` への push で formatter / テストを実行し、`infra/tests` も検証します。
-- `main` ブランチに push された変更は、`publish-image` ジョブで Docker イメージをビルドし Amazon ECR (`aie-dxproject-backend`) にプッシュします。
-- OIDC で Assume する IAM ロール ARN を `AWS_DEPLOY_ROLE_ARN` シークレットに設定してください。ロールには `AmazonEC2ContainerRegistryPowerUser` 相当の権限と、ECS サービス更新用の権限を付与する必要があります。
-- CDK デプロイ時は `infra/README.md` を参照し、独自のイメージを使う場合は `use_sample_image=false` と `image_tag` をコンテキストに指定してください。
-- GitHub Actions 向け IAM ロールは `AieDxprojectGithubOidcStack` で作成できます。出力されたロール ARN を GitHub シークレットに登録してください。
+- 現在、このリポジトリには GitHub Actions のワークフローは同梱していません。
+- CI を導入する場合は、最低限 black / isort / pytest の実行を含むジョブを作成し、必要に応じて ECR へのビルド/プッシュや CDK デプロイを追加してください（`infra/README.md` 参照）。
+- GitHub OIDC 連携や ECR/ECS の権限設計は、利用する環境に合わせて構成してください。
