@@ -100,39 +100,39 @@ alembic upgrade head
 ```mermaid
 graph TB
     subgraph "クライアント層"
-        Client[Web/API クライアント]
+        Client["Web/API クライアント"]
     end
     
     subgraph "API層"
-        FastAPI[FastAPI アプリケーション<br/>app/main.py]
-        Router1[Upload Router<br/>/api/v1/uploads]
-        Router2[Analysis Router<br/>/api/v1/uploads/{id}/status]
-        Router3[Comments Router<br/>/api/v1/courses/{name}/comments]
-        Router4[Courses Router<br/>/api/v1/courses]
-        Router5[Lectures Router<br/>/api/v1/lectures]
-        Router6[Metrics Router<br/>/api/v1/uploads/{id}/metrics]
+        FastAPI["FastAPI アプリケーション<br/>app/main.py"]
+        Router1["Upload Router<br/>/api/v1/uploads"]
+        Router2["Analysis Router<br/>/api/v1/uploads/id/status"]
+        Router3["Comments Router<br/>/api/v1/courses/name/comments"]
+        Router4["Courses Router<br/>/api/v1/courses"]
+        Router5["Lectures Router<br/>/api/v1/lectures"]
+        Router6["Metrics Router<br/>/api/v1/uploads/id/metrics"]
     end
     
     subgraph "サービス層"
-        Storage[Storage Service<br/>Local/S3]
-        LLMClient[LLM Client<br/>OpenAI/Azure/Mock]
-        Pipeline[Upload Pipeline<br/>CSV解析・検証]
+        Storage["Storage Service<br/>Local/S3"]
+        LLMClient["LLM Client<br/>OpenAI/Azure/Mock"]
+        Pipeline["Upload Pipeline<br/>CSV解析・検証"]
     end
     
     subgraph "バックグラウンド処理"
-        Celery[Celery Worker]
-        Redis[Redis<br/>メッセージブローカー]
-        Task[process_uploaded_file<br/>非同期分析タスク]
+        Celery["Celery Worker"]
+        Redis["Redis<br/>メッセージブローカー"]
+        Task["process_uploaded_file<br/>非同期分析タスク"]
     end
     
     subgraph "データ層"
-        DB[(PostgreSQL/SQLite<br/>データベース)]
-        Models[SQLAlchemy Models<br/>UploadedFile/Comment/SurveyResponse/Lecture]
+        DB[("PostgreSQL/SQLite<br/>データベース")]
+        Models["SQLAlchemy Models"]
     end
     
     subgraph "外部サービス"
-        S3[AWS S3<br/>オプション]
-        LLMAPI[LLM API<br/>OpenAI/Azure等]
+        S3["AWS S3<br/>オプション"]
+        LLMAPI["LLM API<br/>OpenAI/Azure等"]
     end
     
     Client --> FastAPI
@@ -214,7 +214,7 @@ sequenceDiagram
     
     Worker->>DB: ステータス更新<br/>(status=COMPLETED)
     
-    Client->>API: GET /api/v1/uploads/{id}/status
+    Client->>API: GET /api/v1/uploads/id/status
     API->>DB: ステータス照会
     DB-->>API: 処理状況
     API-->>Client: ステータスレスポンス
@@ -306,44 +306,44 @@ erDiagram
 ```mermaid
 graph LR
     subgraph "app/main.py"
-        Main[create_app<br/>FastAPI Factory]
+        Main["create_app<br/>FastAPI Factory"]
     end
     
     subgraph "app/api/"
-        Upload[upload.py]
-        Analysis[analysis.py]
-        Comments[comments.py]
-        Courses[courses.py]
-        Lectures[lectures.py]
-        Metrics[metrics.py]
+        Upload["upload.py"]
+        Analysis["analysis.py"]
+        Comments["comments.py"]
+        Courses["courses.py"]
+        Lectures["lectures.py"]
+        Metrics["metrics.py"]
     end
     
     subgraph "app/services/"
-        StorageSvc[storage.py<br/>LocalStorageClient<br/>S3StorageClient]
-        LLMSvc[llm_client.py<br/>LLMClient]
-        PipelineSvc[upload_pipeline.py<br/>CSV解析・検証]
+        StorageSvc["storage.py<br/>LocalStorageClient<br/>S3StorageClient"]
+        LLMSvc["llm_client.py<br/>LLMClient"]
+        PipelineSvc["upload_pipeline.py<br/>CSV解析・検証"]
     end
     
     subgraph "app/analysis/"
-        Analyzer[analyzer.py<br/>analyze_comment]
-        Aggregation[aggregation.py<br/>分類・感情分析]
-        Safety[safety.py<br/>安全性チェック]
-        Scoring[scoring.py<br/>重要度スコア]
-        LLMAnalyzer[llm_analyzer.py<br/>LLM分析ラッパー]
+        Analyzer["analyzer.py<br/>analyze_comment"]
+        Aggregation["aggregation.py<br/>分類・感情分析"]
+        Safety["safety.py<br/>安全性チェック"]
+        Scoring["scoring.py<br/>重要度スコア"]
+        LLMAnalyzer["llm_analyzer.py<br/>LLM分析ラッパー"]
     end
     
     subgraph "app/workers/"
-        CeleryApp[celery_app.py<br/>Celery設定]
-        Tasks[tasks.py<br/>process_uploaded_file]
+        CeleryApp["celery_app.py<br/>Celery設定"]
+        Tasks["tasks.py<br/>process_uploaded_file"]
     end
     
     subgraph "app/db/"
-        Models[models.py<br/>SQLAlchemy Models]
-        Session[session.py<br/>get_db]
+        Models["models.py<br/>SQLAlchemy Models"]
+        Session["session.py<br/>get_db"]
     end
     
     subgraph "app/core/"
-        Settings[settings.py<br/>AppSettings]
+        Settings["settings.py<br/>AppSettings"]
     end
     
     Main --> Upload
