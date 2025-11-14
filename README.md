@@ -316,13 +316,6 @@ graph LR
     Settings --> Models
 ```
 
-## コントリビューション
-
-1. フィーチャーブランチを作成してください。
-2. Blackとisortでコードをフォーマットしてください（`black . && isort .`）。
-3. `pytest`を実行してください。
-4. mainブランチへのプルリクエストを開いてください。
-
 ## CI/CD
 
 - GitHub Actions は `pull_request` と `main` への push で formatter / テストを実行し、`infra/tests` も検証します。
