@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, select, or_
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -16,10 +16,11 @@ router = APIRouter()
 def _choose_effective_files(
     rows: Iterable[models.UploadedFile],
 ) -> Dict[int, models.UploadedFile]:
-    """
-    For each lecture_number, choose one file:
-      - Prefer finalized (finalized_at not null), pick the most recent finalized_at
-      - Otherwise pick the most recent upload_timestamp
+    """Choose the representative file per lecture_number.
+
+    Preference:
+    1) finalized (latest finalized_at)
+    2) otherwise latest upload_timestamp
     """
     by_number: Dict[int, List[models.UploadedFile]] = defaultdict(list)
     for row in rows:
@@ -36,12 +37,7 @@ def _choose_effective_files(
 
 
 def _version_filter(version: str | None):
-    """
-    Build SQLAlchemy filter expression for Comment.analysis_version by version.
-    - version == "final" -> analysis_version == "final"
-    - version == "preliminary" -> analysis_version == "preliminary" OR NULL
-    - version is None -> no filter (use all available)
-    """
+    """Return filter expression for Comment.analysis_version."""
     if version == "final":
         return models.Comment.analysis_version == "final"
     if version == "preliminary":
@@ -53,6 +49,7 @@ def _version_filter(version: str | None):
 
 
 def _compute_average_scores(db: Session, file_ids: List[int]) -> Dict[str, Optional[float]]:
+    """Compute averages for survey scores (excluding recommend_to_friend)."""
     if not file_ids:
         return {}
     s = (
@@ -60,7 +57,11 @@ def _compute_average_scores(db: Session, file_ids: List[int]) -> Dict[str, Optio
             func.avg(models.SurveyResponse.score_satisfaction_overall),
             func.avg(models.SurveyResponse.score_satisfaction_content_volume),
             func.avg(models.SurveyResponse.score_satisfaction_content_understanding),
+            func.avg(models.SurveyResponse.score_satisfaction_content_announcement),
             func.avg(models.SurveyResponse.score_satisfaction_instructor_overall),
+            func.avg(models.SurveyResponse.score_satisfaction_instructor_efficiency),
+            func.avg(models.SurveyResponse.score_satisfaction_instructor_response),
+            func.avg(models.SurveyResponse.score_satisfaction_instructor_clarity),
             func.avg(models.SurveyResponse.score_self_preparation),
             func.avg(models.SurveyResponse.score_self_motivation),
             func.avg(models.SurveyResponse.score_self_applicability),
@@ -72,22 +73,43 @@ def _compute_average_scores(db: Session, file_ids: List[int]) -> Dict[str, Optio
         "overall_satisfaction": _maybe_round(s[0]),
         "content_volume": _maybe_round(s[1]),
         "content_understanding": _maybe_round(s[2]),
-        "instructor_overall": _maybe_round(s[3]),
-        "self_preparation": _maybe_round(s[4]),
-        "self_motivation": _maybe_round(s[5]),
-        "self_applicability": _maybe_round(s[6]),
+        "content_announcement": _maybe_round(s[3]),
+        "instructor_overall": _maybe_round(s[4]),
+        "instructor_efficiency": _maybe_round(s[5]),
+        "instructor_response": _maybe_round(s[6]),
+        "instructor_clarity": _maybe_round(s[7]),
+        "self_preparation": _maybe_round(s[8]),
+        "self_motivation": _maybe_round(s[9]),
+        "self_applicability": _maybe_round(s[10]),
     }
 
 
 def _maybe_round(value: Optional[float]) -> Optional[float]:
+    """Round numeric values for stable UI display."""
     if value is None:
         return None
     return round(float(value), 2)
 
 
-def _compute_nps(db: Session, file_ids: List[int]) -> Dict[str, float]:
+def _compute_nps(
+    db: Session, file_ids: List[int], *, nps_scale: int = 5
+) -> Dict[str, float | int]:
+    """Compute NPS and breakdown for 5 or 10 point scales.
+
+    - nps_scale=5: detractors={1,2}, passives={3,4}, promoters={5}
+    - nps_scale=10: detractors=0..6, passives=7..8, promoters=9..10
+    """
     if not file_ids:
-        return {"score": 0.0, "promoters_percent": 0.0, "detractors_percent": 0.0}
+        return {
+            "score": 0.0,
+            "promoters_percent": 0.0,
+            "passives_percent": 0.0,
+            "detractors_percent": 0.0,
+            "promoters": 0,
+            "passives": 0,
+            "detractors": 0,
+            "total": 0,
+        }
     rows = (
         db.query(models.SurveyResponse.score_recommend_to_friend)
         .filter(models.SurveyResponse.file_id.in_(file_ids))
@@ -95,26 +117,49 @@ def _compute_nps(db: Session, file_ids: List[int]) -> Dict[str, float]:
     )
     scores = [r[0] for r in rows if r[0] is not None]
     if not scores:
-        return {"score": 0.0, "promoters_percent": 0.0, "detractors_percent": 0.0}
+        return {
+            "score": 0.0,
+            "promoters_percent": 0.0,
+            "passives_percent": 0.0,
+            "detractors_percent": 0.0,
+            "promoters": 0,
+            "passives": 0,
+            "detractors": 0,
+            "total": 0,
+        }
     total = len(scores)
-    promoters = sum(1 for v in scores if v == 5)
-    detractors = sum(1 for v in scores if v in (1, 2))
+    if nps_scale == 10:
+        promoters = sum(1 for v in scores if v is not None and 9 <= int(v) <= 10)
+        passives = sum(1 for v in scores if v is not None and 7 <= int(v) <= 8)
+        detractors = sum(1 for v in scores if v is not None and 0 <= int(v) <= 6)
+    else:
+        promoters = sum(1 for v in scores if v == 5)
+        passives = sum(1 for v in scores if v in (3, 4))
+        detractors = sum(1 for v in scores if v in (1, 2))
     promoters_pct = round(promoters * 100.0 / total, 1)
+    passives_pct = round(passives * 100.0 / total, 1)
     detractors_pct = round(detractors * 100.0 / total, 1)
     nps = round(promoters_pct - detractors_pct, 1)
     return {
         "score": nps,
         "promoters_percent": promoters_pct,
+        "passives_percent": passives_pct,
         "detractors_percent": detractors_pct,
+        "promoters": promoters,
+        "passives": passives,
+        "detractors": detractors,
+        "total": total,
     }
 
 
 def _compute_nps_for_file(db: Session, file_id: int) -> float:
-    data = _compute_nps(db, [file_id])
+    """Compute NPS score (5-point scale) for a single file."""
+    data = _compute_nps(db, [file_id], nps_scale=5)
     return data["score"]
 
 
 def _response_count(db: Session, file_id: int) -> int:
+    """Count survey responses for a file."""
     return (
         db.query(models.SurveyResponse)
         .filter(models.SurveyResponse.file_id == file_id)
@@ -125,6 +170,7 @@ def _response_count(db: Session, file_id: int) -> int:
 def _sentiment_breakdown(
     db: Session, file_ids: List[int], version: Optional[str]
 ) -> Dict[str, int]:
+    """Aggregate counts for sentiment labels."""
     if not file_ids:
         return {"positive": 0, "negative": 0, "neutral": 0}
     q = db.query(models.Comment.llm_sentiment, func.count(1)).filter(
@@ -145,6 +191,7 @@ def _sentiment_breakdown(
 def _category_breakdown(
     db: Session, file_ids: List[int], version: Optional[str]
 ) -> List[Dict[str, int | str]]:
+    """Aggregate counts for normalized categories."""
     if not file_ids:
         return []
     q = db.query(models.Comment.llm_category, func.count(1)).filter(
@@ -175,8 +222,10 @@ def _category_breakdown(
 def dashboard_overview(
     lecture_id: int,
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
+    nps_scale: int = Query(default=5, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return overall dashboard aggregates for a lecture."""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
@@ -198,7 +247,7 @@ def dashboard_overview(
     chosen_ids = [f.file_id for f in chosen.values()]
 
     average_scores = _compute_average_scores(db, chosen_ids)
-    nps = _compute_nps(db, chosen_ids)
+    nps = _compute_nps(db, chosen_ids, nps_scale=nps_scale)
 
     nps_transition = []
     response_count_transition = []
@@ -224,6 +273,7 @@ def dashboard_per_lecture(
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return per-lecture transitions and breakdowns for a lecture."""
     files = (
         db.query(models.UploadedFile)
         .filter(models.UploadedFile.lecture_id == lecture_id)
@@ -288,6 +338,7 @@ def dashboard_yearly(
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Return yearly comparison for the same course name across academic years."""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")

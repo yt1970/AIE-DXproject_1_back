@@ -12,6 +12,7 @@ router = APIRouter()
 
 @router.get("/uploads/{file_id}/metrics", response_model=LectureMetricsResponse)
 def get_metrics(file_id: int, db: Session = Depends(get_db)) -> LectureMetricsResponse:
+    """Return metrics for a specific uploaded file."""
     uploaded = (
         db.query(models.UploadedFile)
         .filter(models.UploadedFile.file_id == file_id)
@@ -42,6 +43,7 @@ def upsert_metrics(
     payload: LectureMetricsPayload,
     db: Session = Depends(get_db),
 ) -> LectureMetricsResponse:
+    """Upsert metrics for a specific uploaded file."""
     uploaded = (
         db.query(models.UploadedFile)
         .filter(models.UploadedFile.file_id == file_id)
@@ -73,6 +75,7 @@ def upsert_metrics(
     )
 
 def _choose_target_file_for_lecture(db: Session, lecture_id: int) -> int | None:
+    """Pick finalized file for lecture or fallback to latest upload."""
     files = (
         db.query(models.UploadedFile)
         .filter(models.UploadedFile.lecture_id == lecture_id)
@@ -93,6 +96,7 @@ def get_metrics_by_lecture(
     lecture_id: int,
     db: Session = Depends(get_db),
 ) -> LectureMetricsResponse:
+    """Return metrics for a lecture by selecting a representative file."""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
@@ -120,6 +124,7 @@ def upsert_metrics_by_lecture(
     payload: LectureMetricsPayload,
     db: Session = Depends(get_db),
 ) -> LectureMetricsResponse:
+    """Upsert metrics for a lecture by targeting the representative file."""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")

@@ -34,9 +34,7 @@ def list_lectures(
     sort_by: str = "course_name",
     sort_order: str = "asc",
 ) -> List[LectureInfo]:
-    """
-    講義一覧を返す（coursesエンドポイントと同等の機能をlecturesに提供）。
-    """
+    """Return list of lectures with optional filters and sorting."""
     q = db.query(models.Lecture)
     if name:
         q = q.filter(func.lower(models.Lecture.course_name).like(f"%{name.lower()}%"))
@@ -67,10 +65,7 @@ def list_lectures(
 
 @router.get("/lectures/metadata")
 def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
-    """
-    データ追加フォーム用の選択肢データを返す。
-    優先: lecture テーブル / フォールバック: uploaded_file から推定。
-    """
+    """Return metadata for form dropdowns (courses/years/terms)."""
     # From lecture table
     courses = [row[0] for row in db.query(models.Lecture.course_name).distinct().all() if row[0]]
     years = [row[0] for row in db.query(models.Lecture.academic_year).distinct().all() if row[0] is not None]
@@ -94,6 +89,7 @@ def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
 
 @router.post("/lectures", response_model=LectureInfo)
 def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> LectureInfo:
+    """Create a lecture, rejecting duplicates on (course_name, academic_year, period)."""
     course_name = _normalize_text(payload.course_name)
     period = _normalize_text(payload.period)
     if not course_name or not period:
@@ -131,6 +127,7 @@ def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> Lec
 def update_lecture(
     lecture_id: int, payload: LectureUpdate, db: Session = Depends(get_db)
 ) -> LectureInfo:
+    """Update lecture fields, preventing duplicates after update."""
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
         raise HTTPException(status_code=404, detail="Lecture not found")
@@ -172,6 +169,7 @@ def update_lecture(
 
 @router.delete("/lectures/{lecture_id}")
 def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
+    """Delete a lecture and associated uploads/comments/metrics. Use carefully."""
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
         raise HTTPException(status_code=404, detail="Lecture not found")
