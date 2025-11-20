@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,6 @@ from app.services.upload_pipeline import (
     validate_csv_or_raise,
 )
 from app.workers.tasks import process_uploaded_file
-from pydantic import BaseModel
 
 metadata_adapter = TypeAdapter(UploadRequestMetadata)
 logger = logging.getLogger(__name__)
