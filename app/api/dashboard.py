@@ -92,7 +92,7 @@ def _maybe_round(value: Optional[float]) -> Optional[float]:
 
 
 def _compute_nps(
-    db: Session, file_ids: List[int], *, nps_scale: int = 5
+    db: Session, file_ids: List[int], *, nps_scale: int = 10
 ) -> Dict[str, float | int]:
     """Compute NPS and breakdown for 5 or 10 point scales.
 
@@ -152,9 +152,9 @@ def _compute_nps(
     }
 
 
-def _compute_nps_for_file(db: Session, file_id: int) -> float:
-    """Compute NPS score (5-point scale) for a single file."""
-    data = _compute_nps(db, [file_id], nps_scale=5)
+def _compute_nps_for_file(db: Session, file_id: int, *, nps_scale: int = 10) -> float:
+    """Compute NPS score for a single file with the given scale."""
+    data = _compute_nps(db, [file_id], nps_scale=nps_scale)
     return data["score"]
 
 
@@ -222,7 +222,7 @@ def _category_breakdown(
 def dashboard_overview(
     lecture_id: int,
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
-    nps_scale: int = Query(default=5, ge=5, le=10),
+    nps_scale: int = Query(default=10, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
     """Return overall dashboard aggregates for a lecture."""
@@ -253,7 +253,10 @@ def dashboard_overview(
     response_count_transition = []
     for lecture_num, f in sorted(chosen.items(), key=lambda x: x[0]):
         nps_transition.append(
-            {"lecture_num": lecture_num, "score": _compute_nps_for_file(db, f.file_id)}
+            {
+                "lecture_num": lecture_num,
+                "score": _compute_nps_for_file(db, f.file_id, nps_scale=nps_scale),
+            }
         )
         response_count_transition.append(
             {"lecture_num": lecture_num, "count": _response_count(db, f.file_id)}
@@ -330,61 +333,5 @@ def dashboard_per_lecture(
         "comment_categories": categories,
         "self_evaluation_scores": self_evals,
     }
-
-
-@router.get("/dashboard/{lecture_id}/yearly")
-def dashboard_yearly(
-    lecture_id: int,
-    version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
-    db: Session = Depends(get_db),
-) -> dict:
-    """Return yearly comparison for the same course name across academic years."""
-    lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
-    if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
-
-    same_course_lectures = (
-        db.query(models.Lecture)
-        .filter(models.Lecture.course_name == lecture.course_name)
-        .order_by(models.Lecture.academic_year.asc())
-        .all()
-    )
-
-    results: List[dict] = []
-    for lec in same_course_lectures:
-        files = (
-            db.query(models.UploadedFile)
-            .filter(models.UploadedFile.lecture_id == lec.id)
-            .all()
-        )
-        if not files:
-            results.append(
-                {
-                    "academic_year": lec.academic_year,
-                    "average_scores": {},
-                    "nps": {"score": 0.0, "promoters_percent": 0.0, "detractors_percent": 0.0},
-                    "response_count": 0,
-                }
-            )
-            continue
-        chosen = _choose_effective_files(files)
-        chosen_ids = [f.file_id for f in chosen.values()]
-        avg_scores = _compute_average_scores(db, chosen_ids)
-        nps = _compute_nps(db, chosen_ids)
-        responses = (
-            db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.file_id.in_(chosen_ids))
-            .count()
-        )
-        results.append(
-            {
-                "academic_year": lec.academic_year,
-                "average_scores": avg_scores,
-                "nps": nps,
-                "response_count": int(responses),
-            }
-        )
-
-    return {"course_name": lecture.course_name, "yearly": results}
 
 
