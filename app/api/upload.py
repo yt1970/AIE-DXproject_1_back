@@ -6,7 +6,7 @@ from datetime import date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from pydantic import TypeAdapter, ValidationError
+from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -289,4 +289,80 @@ async def upload_and_enqueue_analysis(
         file_id=new_file_record.file_id,
         status_url=f"/api/v1/uploads/{new_file_record.file_id}/status",
         message="Upload accepted. Analysis will run in the background.",
+    )
+
+
+class UploadIdentityDeleteRequest(BaseModel):
+    """Identity for selecting an uploaded dataset to delete."""
+
+    course_name: str
+    academic_year: str | None = None
+    period: str | None = None
+    lecture_number: int
+    analysis_version: str | None = None  # "final" | "preliminary" | None(all)
+
+
+@router.delete("/uploads/by-identity", response_model=DeleteUploadResponse)
+def delete_uploaded_by_identity(
+    payload: UploadIdentityDeleteRequest, db: Session = Depends(get_db)
+) -> DeleteUploadResponse:
+    """Delete a single uploaded dataset by lecture identity and version filter."""
+    uploaded = (
+        db.query(models.UploadedFile)
+        .filter(
+            models.UploadedFile.course_name == payload.course_name,
+            models.UploadedFile.lecture_number == payload.lecture_number,
+        )
+        .first()
+    )
+    # Optionally narrow by academic_year/period if provided
+    if uploaded and payload.academic_year:
+        if uploaded.academic_year != str(payload.academic_year):
+            uploaded = None
+    if uploaded and payload.period:
+        if (uploaded.period or "").lower() != payload.period.lower():
+            uploaded = None
+
+    if not uploaded:
+        raise HTTPException(status_code=404, detail="Uploaded dataset not found")
+
+    if uploaded.status == "PROCESSING":
+        raise HTTPException(status_code=409, detail="File is currently processing")
+
+    removed_comments = 0
+    removed_survey_responses = 0
+
+    # Delete comments filtered by analysis_version if specified
+    q_comments = db.query(models.Comment).filter(models.Comment.file_id == uploaded.file_id)
+    if payload.analysis_version in {"final", "preliminary"}:
+        q_comments = q_comments.filter(models.Comment.analysis_version == payload.analysis_version)
+    removed_comments = q_comments.delete(synchronize_session=False) or 0
+
+    # If version-specific delete removed only comments, keep file; otherwise delete survey/metrics/file
+    # If version is None, we consider deleting the whole dataset
+    if payload.analysis_version is None:
+        removed_survey_responses = (
+            db.query(models.SurveyResponse)
+            .filter(models.SurveyResponse.file_id == uploaded.file_id)
+            .delete(synchronize_session=False)
+            or 0
+        )
+        db.query(models.LectureMetrics).filter(
+            models.LectureMetrics.file_id == uploaded.file_id
+        ).delete(synchronize_session=False)
+        # best-effort storage delete
+        try:
+            if uploaded.s3_key:
+                storage_client = get_storage_client()
+                storage_client.delete(uri=uploaded.s3_key)
+        except Exception:
+            pass
+        db.delete(uploaded)
+
+    db.commit()
+    return DeleteUploadResponse(
+        file_id=uploaded.file_id,
+        deleted=True,
+        removed_comments=removed_comments,
+        removed_survey_responses=removed_survey_responses,
     )
