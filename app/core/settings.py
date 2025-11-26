@@ -2,24 +2,34 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
+
+_dotenv_disabled = os.environ.get("APP_SKIP_DOTENV", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
+COMMON_ENV_CONFIG = {
+    "env_file": None if _dotenv_disabled else ".env",
+    "env_file_encoding": "utf-8",
+    "extra": "ignore",
+}
 
 
 class AWSSettings(BaseSettings):
     """AWS関連の認証情報を管理する設定。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        **COMMON_ENV_CONFIG,
         env_prefix="AWS_",
-        extra="ignore",
     )
 
     access_key_id: Optional[str] = None
@@ -32,10 +42,8 @@ class LLMSettings(BaseSettings):
     """LLM連携で利用する設定値。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        **COMMON_ENV_CONFIG,
         env_prefix="LLM_",
-        extra="ignore",
     )
 
     provider: str = "mock"
@@ -46,12 +54,21 @@ class LLMSettings(BaseSettings):
     organization: Optional[str] = None
     timeout_seconds: float = 15.0
     request_template: Optional[str] = None
-    extra_headers: Optional[str | Dict[str, str]] = None
+    extra_headers: Dict[str, str] = Field(default_factory=dict)
 
+    @field_validator("provider", mode="before")
     @classmethod
     def _parse_provider(cls, value: str) -> str:
-        return value.lower().strip()
+        return value.lower().strip() if isinstance(value, str) else value
 
+    @field_validator("timeout_seconds")
+    @classmethod
+    def _validate_timeout(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("LLM_TIMEOUT_SECONDS must be greater than zero.")
+        return value
+
+    @field_validator("extra_headers", mode="before")
     @classmethod
     def _parse_extra_headers(
         cls, value: Optional[str | Dict[str, str]]
@@ -72,27 +89,13 @@ class LLMSettings(BaseSettings):
             raise ValueError("LLM_EXTRA_HEADERS must decode to a JSON object")
         raise ValueError("LLM_EXTRA_HEADERS must be a JSON object or empty.")
 
-    def model_post_init(self, __context: Dict[str, object]) -> None:
-        # 正規化処理をここで実施
-        object.__setattr__(self, "provider", self._parse_provider(self.provider))
-        if self.timeout_seconds <= 0:
-            raise ValueError("LLM_TIMEOUT_SECONDS must be greater than zero.")
-        try:
-            headers = self._parse_extra_headers(self.extra_headers)
-        except ValueError as exc:
-            logger.warning("%s", exc)
-            headers = {}
-        object.__setattr__(self, "extra_headers", headers)
-
 
 class StorageSettings(BaseSettings):
     """ファイルアップロード処理で利用するストレージ設定。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        **COMMON_ENV_CONFIG,
         env_prefix="UPLOAD_",
-        extra="ignore",
     )
 
     backend: str = "local"
@@ -123,18 +126,22 @@ class StorageSettings(BaseSettings):
         try:
             return path.resolve()
         except FileNotFoundError:
-            # resolve() raises if a parent is missing on some Python versions; fallback.
+            # 一部のPython版では親ディレクトリ欠如時にresolve()が例外を出すためフォールバック
             return path
+
+    def ensure_local_directory(self) -> Path:
+        """ローカルストレージ用ディレクトリを確実に作成し、解決済みパスを返す。"""
+        path = self.local_directory_path
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
 
 class CelerySettings(BaseSettings):
     """Celeryバックグラウンドワーカーの設定。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        **COMMON_ENV_CONFIG,
         env_prefix="CELERY_",
-        extra="ignore",
     )
 
     broker_url: str = "redis://localhost:6379/0"
@@ -150,9 +157,7 @@ class AppSettings(BaseSettings):
     """アプリ全体の設定。機密情報は環境変数や .env から読み込む。"""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
+        **COMMON_ENV_CONFIG,
     )
 
     env: str = Field(default="development", alias="APP_ENV")
@@ -177,7 +182,7 @@ class AppSettings(BaseSettings):
         }
 
 
-@lru_cache
+@lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     """アプリ設定をキャッシュ付きで取得する。"""
     return AppSettings()

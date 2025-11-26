@@ -1,4 +1,4 @@
-"""Core utilities shared across the backend."""
+"""バックエンド全体で共有されるコアユーティリティ群。"""
 
 from .settings import AppSettings, get_settings
 

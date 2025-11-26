@@ -68,6 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(lectures.router, prefix="/api/v1", tags=["Lectures"])
     app.include_router(metrics.router, prefix="/api/v1", tags=["Metrics"])
     from app.api import dashboard
+
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 
     return app
@@ -75,3 +76,5 @@ def create_app() -> FastAPI:
 
 # グローバルなアプリケーションインスタンスを作成
 app = create_app()
+
+
