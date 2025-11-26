@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -12,139 +11,97 @@ from app.db.session import get_db
 
 router = APIRouter()
 
+_SCORE_FIELD_MAP = {
+    "overall_satisfaction": "score_overall_satisfaction",
+    "content_volume": "score_content_volume",
+    "content_understanding": "score_content_understanding",
+    "content_announcement": "score_content_announcement",
+    "instructor_overall": "score_instructor_overall",
+    "instructor_time": "score_instructor_time",
+    "instructor_qa": "score_instructor_qa",
+    "instructor_speaking": "score_instructor_speaking",
+    "self_preparation": "score_self_preparation",
+    "self_motivation": "score_self_motivation",
+    "self_future": "score_self_future",
+}
 
-def _choose_effective_files(
-    rows: Iterable[models.UploadedFile],
-) -> Dict[int, models.UploadedFile]:
-    """Choose the representative file per lecture_number.
 
-    Preference:
-    1) finalized (latest finalized_at)
-    2) otherwise latest upload_timestamp
+def _choose_effective_batches(
+    rows: Iterable[models.SurveyBatch],
+) -> Dict[int, models.SurveyBatch]:
+    """講義番号ごとの代表バッチを選択する。
+
+    優先順位:
+    1. finalized_at の新しいもの
+    2. upload_timestamp の新しいもの
     """
-    by_number: Dict[int, List[models.UploadedFile]] = defaultdict(list)
+    by_number: Dict[int, List[models.SurveyBatch]] = defaultdict(list)
     for row in rows:
         by_number[row.lecture_number].append(row)
 
-    chosen: Dict[int, models.UploadedFile] = {}
-    for lecture_number, files in by_number.items():
-        finalized = [f for f in files if f.finalized_at is not None]
+    chosen: Dict[int, models.SurveyBatch] = {}
+    for lecture_number, batches in by_number.items():
+        finalized = [b for b in batches if b.finalized_at is not None]
         if finalized:
-            chosen[lecture_number] = max(finalized, key=lambda f: f.finalized_at)
+            chosen[lecture_number] = max(finalized, key=lambda b: b.finalized_at)
         else:
-            chosen[lecture_number] = max(files, key=lambda f: f.upload_timestamp)
+            chosen[lecture_number] = max(batches, key=lambda b: b.upload_timestamp)
     return chosen
 
 
-def _version_filter(version: str | None):
-    """Return filter expression for Comment.analysis_version."""
-    if version == "final":
-        return models.Comment.analysis_version == "final"
-    if version == "preliminary":
-        return or_(
-            models.Comment.analysis_version == "preliminary",
-            models.Comment.analysis_version.is_(None),
-        )
-    return None
-
-
-def _compute_average_scores(db: Session, file_ids: List[int]) -> Dict[str, Optional[float]]:
-    """Compute averages for survey scores (excluding recommend_to_friend)."""
-    if not file_ids:
-        return {}
-    s = (
-        db.query(
-            func.avg(models.SurveyResponse.score_satisfaction_overall),
-            func.avg(models.SurveyResponse.score_satisfaction_content_volume),
-            func.avg(models.SurveyResponse.score_satisfaction_content_understanding),
-            func.avg(models.SurveyResponse.score_satisfaction_content_announcement),
-            func.avg(models.SurveyResponse.score_satisfaction_instructor_overall),
-            func.avg(models.SurveyResponse.score_satisfaction_instructor_efficiency),
-            func.avg(models.SurveyResponse.score_satisfaction_instructor_response),
-            func.avg(models.SurveyResponse.score_satisfaction_instructor_clarity),
-            func.avg(models.SurveyResponse.score_self_preparation),
-            func.avg(models.SurveyResponse.score_self_motivation),
-            func.avg(models.SurveyResponse.score_self_applicability),
-        )
-        .filter(models.SurveyResponse.file_id.in_(file_ids))
-        .one()
+def _pick_summary(
+    batch_id: int,
+    version: str,
+    summaries: Dict[Tuple[int, str], models.SurveySummary],
+) -> Optional[models.SurveySummary]:
+    return summaries.get((batch_id, version)) or summaries.get(
+        (batch_id, "preliminary")
     )
-    return {
-        "overall_satisfaction": _maybe_round(s[0]),
-        "content_volume": _maybe_round(s[1]),
-        "content_understanding": _maybe_round(s[2]),
-        "content_announcement": _maybe_round(s[3]),
-        "instructor_overall": _maybe_round(s[4]),
-        "instructor_efficiency": _maybe_round(s[5]),
-        "instructor_response": _maybe_round(s[6]),
-        "instructor_clarity": _maybe_round(s[7]),
-        "self_preparation": _maybe_round(s[8]),
-        "self_motivation": _maybe_round(s[9]),
-        "self_applicability": _maybe_round(s[10]),
-    }
 
 
-def _maybe_round(value: Optional[float]) -> Optional[float]:
-    """Round numeric values for stable UI display."""
-    if value is None:
-        return None
-    return round(float(value), 2)
+def _pick_comment_summary(
+    batch_id: int,
+    version: str,
+    summaries: Dict[Tuple[int, str], models.CommentSummary],
+) -> Optional[models.CommentSummary]:
+    return summaries.get((batch_id, version)) or summaries.get(
+        (batch_id, "preliminary")
+    )
 
 
-def _compute_nps(
-    db: Session, file_ids: List[int], *, nps_scale: int = 10
+def _aggregate_scores(
+    summaries: List[models.SurveySummary],
+) -> Dict[str, Optional[float]]:
+    totals: Dict[str, float] = {k: 0.0 for k in _SCORE_FIELD_MAP.keys()}
+    weights: Dict[str, int] = {k: 0 for k in _SCORE_FIELD_MAP.keys()}
+    for s in summaries:
+        weight = s.responses_count or 0
+        if weight <= 0:
+            continue
+        for out_key, attr in _SCORE_FIELD_MAP.items():
+            value = getattr(s, attr)
+            if value is not None:
+                totals[out_key] += float(value) * weight
+                weights[out_key] += weight
+    result: Dict[str, Optional[float]] = {}
+    for key in _SCORE_FIELD_MAP.keys():
+        if weights[key] > 0:
+            result[key] = round(totals[key] / weights[key], 2)
+        else:
+            result[key] = None
+    return result
+
+
+def _aggregate_nps(
+    summaries: List[models.SurveySummary],
 ) -> Dict[str, float | int]:
-    """Compute NPS and breakdown for 5 or 10 point scales.
-
-    - nps_scale=5: detractors={1,2}, passives={3,4}, promoters={5}
-    - nps_scale=10: detractors=0..6, passives=7..8, promoters=9..10
-    """
-    if not file_ids:
-        return {
-            "score": 0.0,
-            "promoters_percent": 0.0,
-            "passives_percent": 0.0,
-            "detractors_percent": 0.0,
-            "promoters": 0,
-            "passives": 0,
-            "detractors": 0,
-            "total": 0,
-        }
-    rows = (
-        db.query(models.SurveyResponse.score_recommend_to_friend)
-        .filter(models.SurveyResponse.file_id.in_(file_ids))
-        .all()
-    )
-    scores = [r[0] for r in rows if r[0] is not None]
-    if not scores:
-        return {
-            "score": 0.0,
-            "promoters_percent": 0.0,
-            "passives_percent": 0.0,
-            "detractors_percent": 0.0,
-            "promoters": 0,
-            "passives": 0,
-            "detractors": 0,
-            "total": 0,
-        }
-    total = len(scores)
-    if nps_scale == 10:
-        promoters = sum(1 for v in scores if v is not None and 9 <= int(v) <= 10)
-        passives = sum(1 for v in scores if v is not None and 7 <= int(v) <= 8)
-        detractors = sum(1 for v in scores if v is not None and 0 <= int(v) <= 6)
-    else:
-        promoters = sum(1 for v in scores if v == 5)
-        passives = sum(1 for v in scores if v in (3, 4))
-        detractors = sum(1 for v in scores if v in (1, 2))
-    promoters_pct = round(promoters * 100.0 / total, 1)
-    passives_pct = round(passives * 100.0 / total, 1)
-    detractors_pct = round(detractors * 100.0 / total, 1)
-    nps = round(promoters_pct - detractors_pct, 1)
+    promoters = sum(int(s.nps_promoters or 0) for s in summaries)
+    passives = sum(int(s.nps_passives or 0) for s in summaries)
+    detractors = sum(int(s.nps_detractors or 0) for s in summaries)
+    total = sum(int(s.nps_total or 0) for s in summaries)
+    score = round((promoters - detractors) * 100.0 / total, 1) if total else 0.0
     return {
-        "score": nps,
-        "promoters_percent": promoters_pct,
-        "passives_percent": passives_pct,
-        "detractors_percent": detractors_pct,
+        "score": score,
         "promoters": promoters,
         "passives": passives,
         "detractors": detractors,
@@ -152,121 +109,140 @@ def _compute_nps(
     }
 
 
-def _compute_nps_for_file(db: Session, file_id: int, *, nps_scale: int = 10) -> float:
-    """Compute NPS score for a single file with the given scale."""
-    data = _compute_nps(db, [file_id], nps_scale=nps_scale)
-    return data["score"]
-
-
-def _response_count(db: Session, file_id: int) -> int:
-    """Count survey responses for a file."""
-    return (
-        db.query(models.SurveyResponse)
-        .filter(models.SurveyResponse.file_id == file_id)
-        .count()
-    )
-
-
-def _sentiment_breakdown(
-    db: Session, file_ids: List[int], version: Optional[str]
+def _aggregate_sentiments(
+    summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    """Aggregate counts for sentiment labels."""
-    if not file_ids:
-        return {"positive": 0, "negative": 0, "neutral": 0}
-    q = db.query(models.Comment.llm_sentiment, func.count(1)).filter(
-        models.Comment.file_id.in_(file_ids)
-    )
-    vf = _version_filter(version)
-    if vf is not None:
-        q = q.filter(vf)
-    q = q.group_by(models.Comment.llm_sentiment)
-    raw = dict((k or "neutral", int(v)) for k, v in q.all())
     return {
-        "positive": raw.get("positive", 0),
-        "negative": raw.get("negative", 0),
-        "neutral": raw.get("neutral", 0),
+        "positive": sum(int(s.sentiment_positive or 0) for s in summaries),
+        "negative": sum(int(s.sentiment_negative or 0) for s in summaries),
+        "neutral": sum(int(s.sentiment_neutral or 0) for s in summaries),
     }
 
 
-def _category_breakdown(
-    db: Session, file_ids: List[int], version: Optional[str]
-) -> List[Dict[str, int | str]]:
-    """Aggregate counts for normalized categories."""
-    if not file_ids:
-        return []
-    q = db.query(models.Comment.llm_category, func.count(1)).filter(
-        models.Comment.file_id.in_(file_ids)
+def _aggregate_categories(
+    summaries: List[models.CommentSummary],
+) -> Dict[str, int]:
+    return {
+        "lecture_content": sum(int(s.category_lecture_content or 0) for s in summaries),
+        "lecture_material": sum(int(s.category_lecture_material or 0) for s in summaries),
+        "operations": sum(int(s.category_operations or 0) for s in summaries),
+        "other": sum(int(s.category_other or 0) for s in summaries),
+    }
+
+
+def _aggregate_counts(
+    survey_summaries: List[models.SurveySummary],
+    comment_summaries: List[models.CommentSummary],
+) -> Dict[str, int]:
+    return {
+        "responses": sum(int(s.responses_count or 0) for s in survey_summaries),
+        "comments": sum(int(s.comments_count or 0) for s in survey_summaries),
+        "important_comments": sum(
+            int(c.important_comments_count or 0) for c in comment_summaries
+        ),
+    }
+
+
+def _load_summaries(
+    db: Session,
+    batch_ids: List[int],
+) -> Tuple[
+    Dict[Tuple[int, str], models.SurveySummary],
+    Dict[Tuple[int, str], models.CommentSummary],
+]:
+    survey_rows = (
+        db.query(models.SurveySummary)
+        .filter(models.SurveySummary.survey_batch_id.in_(batch_ids))
+        .all()
     )
-    vf = _version_filter(version)
-    if vf is not None:
-        q = q.filter(vf)
-    q = q.group_by(models.Comment.llm_category)
-    rows = q.all()
-    # Normalize null/unknown to "その他"
-    result = []
-    for category, count in rows:
-        normalized = category or "その他"
-        result.append({"category": normalized, "count": int(count)})
-    # Ensure the four standard buckets are always included
-    wanted = {"講義内容", "講義資料", "運営", "その他"}
-    present = {r["category"] for r in result}
-    for missing in sorted(wanted - present):
-        result.append({"category": missing, "count": 0})
-    # Stable order
-    order = {"講義内容": 0, "講義資料": 1, "運営": 2, "その他": 3}
-    result.sort(key=lambda r: order.get(r["category"], 99))
-    return result
+    comment_rows = (
+        db.query(models.CommentSummary)
+        .filter(models.CommentSummary.survey_batch_id.in_(batch_ids))
+        .all()
+    )
+    survey_map = {
+        (row.survey_batch_id, row.analysis_version): row for row in survey_rows
+    }
+    comment_map = {
+        (row.survey_batch_id, row.analysis_version): row for row in comment_rows
+    }
+    return survey_map, comment_map
+
+
+def _format_scores(summary: Optional[models.SurveySummary]) -> Dict[str, Optional[float]]:
+    if not summary:
+        return {k: None for k in _SCORE_FIELD_MAP.keys()}
+    return {out_key: getattr(summary, attr) for out_key, attr in _SCORE_FIELD_MAP.items()}
 
 
 @router.get("/dashboard/{lecture_id}/overview")
 def dashboard_overview(
     lecture_id: int,
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
-    nps_scale: int = Query(default=10, ge=5, le=10),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Return overall dashboard aggregates for a lecture."""
+    """講義のダッシュボード全体の集計値を返す（事前計算テーブルを使用）。"""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+        raise HTTPException(status_code=404, detail="講義が見つかりません")
 
-    files = (
-        db.query(models.UploadedFile)
-        .filter(models.UploadedFile.lecture_id == lecture_id)
+    batches = (
+        db.query(models.SurveyBatch)
+        .filter(models.SurveyBatch.lecture_id == lecture_id)
         .all()
     )
-    if not files:
+    if not batches:
         return {
-            "average_scores": {},
-            "nps": {"score": 0.0, "promoters_percent": 0.0, "detractors_percent": 0.0},
-            "nps_transition": [],
-            "response_count_transition": [],
+            "scores": {},
+            "nps": {"score": 0.0, "promoters": 0, "passives": 0, "detractors": 0, "total": 0},
+            "counts": {"responses": 0, "comments": 0, "important_comments": 0},
+            "sentiments": {"positive": 0, "negative": 0, "neutral": 0},
+            "categories": {"lecture_content": 0, "lecture_material": 0, "operations": 0, "other": 0},
+            "timeline": [],
         }
 
-    chosen = _choose_effective_files(files)
-    chosen_ids = [f.file_id for f in chosen.values()]
+    chosen = _choose_effective_batches(batches)
+    chosen_batches = list(chosen.values())
+    batch_ids = [b.id for b in chosen_batches]
 
-    average_scores = _compute_average_scores(db, chosen_ids)
-    nps = _compute_nps(db, chosen_ids, nps_scale=nps_scale)
+    survey_map, comment_map = _load_summaries(db, batch_ids)
 
-    nps_transition = []
-    response_count_transition = []
-    for lecture_num, f in sorted(chosen.items(), key=lambda x: x[0]):
-        nps_transition.append(
+    survey_summaries = [
+        _pick_summary(b.id, version or "final", survey_map) for b in chosen_batches
+    ]
+    comment_summaries = [
+        _pick_comment_summary(b.id, version or "final", comment_map)
+        for b in chosen_batches
+    ]
+    survey_summaries = [s for s in survey_summaries if s]
+    comment_summaries = [c for c in comment_summaries if c]
+
+    scores = _aggregate_scores(survey_summaries)
+    nps = _aggregate_nps(survey_summaries)
+    counts = _aggregate_counts(survey_summaries, comment_summaries)
+    sentiments = _aggregate_sentiments(comment_summaries)
+    categories = _aggregate_categories(comment_summaries)
+
+    timeline = []
+    for lecture_num, batch in sorted(chosen.items(), key=lambda x: x[0]):
+        summary = _pick_summary(batch.id, version or "final", survey_map)
+        timeline.append(
             {
-                "lecture_num": lecture_num,
-                "score": _compute_nps_for_file(db, f.file_id, nps_scale=nps_scale),
+                "lecture_number": lecture_num,
+                "batch_id": batch.id,
+                "nps": summary.nps_score if summary else 0.0,
+                "response_count": summary.responses_count if summary else 0,
+                "avg_overall_satisfaction": summary.score_overall_satisfaction if summary else None,
             }
-        )
-        response_count_transition.append(
-            {"lecture_num": lecture_num, "count": _response_count(db, f.file_id)}
         )
 
     return {
-        "average_scores": average_scores,
+        "scores": scores,
         "nps": nps,
-        "nps_transition": nps_transition,
-        "response_count_transition": response_count_transition,
+        "counts": counts,
+        "sentiments": sentiments,
+        "categories": categories,
+        "timeline": timeline,
     }
 
 
@@ -276,62 +252,50 @@ def dashboard_per_lecture(
     version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
     db: Session = Depends(get_db),
 ) -> dict:
-    """Return per-lecture transitions and breakdowns for a lecture."""
-    files = (
-        db.query(models.UploadedFile)
-        .filter(models.UploadedFile.lecture_id == lecture_id)
+    """講義番号ごとの詳細（スコア・NPS・感情/カテゴリ内訳）を返す。"""
+    batches = (
+        db.query(models.SurveyBatch)
+        .filter(models.SurveyBatch.lecture_id == lecture_id)
         .all()
     )
-    if not files:
-        return {
-            "average_score_transitions": {},
-            "sentiment_analysis": {"positive": 0, "negative": 0, "neutral": 0},
-            "comment_categories": [],
-            "self_evaluation_scores": {},
-        }
-    chosen = _choose_effective_files(files)
+    if not batches:
+        return {"lectures": []}
+
+    chosen = _choose_effective_batches(batches)
     chosen_sorted = sorted(chosen.items(), key=lambda x: x[0])
-    chosen_ids = [f.file_id for _, f in chosen_sorted]
+    batch_ids = [b.id for _, b in chosen_sorted]
+    survey_map, comment_map = _load_summaries(db, batch_ids)
 
-    # Average score transitions by lecture_num
-    def avg_for_single(file_id: int) -> Dict[str, Optional[float]]:
-        return _compute_average_scores(db, [file_id])
-
-    transitions_by_metric: Dict[str, List[Optional[float]]] = defaultdict(list)
-    for _, f in chosen_sorted:
-        a = avg_for_single(f.file_id)
-        for key in (
-            "overall_satisfaction",
-            "content_volume",
-            "content_understanding",
-            "instructor_overall",
-        ):
-            transitions_by_metric[key].append(a.get(key))
-
-    sentiment = _sentiment_breakdown(db, chosen_ids, version)
-    categories = _category_breakdown(db, chosen_ids, version)
-
-    # Self-evaluation (overall average across chosen)
-    self_scores = (
-        db.query(
-            func.avg(models.SurveyResponse.score_self_preparation),
-            func.avg(models.SurveyResponse.score_self_motivation),
-            func.avg(models.SurveyResponse.score_self_applicability),
+    lectures_payload: List[dict] = []
+    for lecture_num, batch in chosen_sorted:
+        summary = _pick_summary(batch.id, version or "final", survey_map)
+        comment_summary = _pick_comment_summary(batch.id, version or "final", comment_map)
+        lectures_payload.append(
+            {
+                "lecture_number": lecture_num,
+                "batch_id": batch.id,
+                "scores": _format_scores(summary),
+                "nps": {
+                    "score": summary.nps_score if summary else 0.0,
+                    "promoters": summary.nps_promoters if summary else 0,
+                    "passives": summary.nps_passives if summary else 0,
+                    "detractors": summary.nps_detractors if summary else 0,
+                    "total": summary.nps_total if summary else 0,
+                },
+                "sentiments": _aggregate_sentiments([comment_summary] if comment_summary else []),
+                "categories": _aggregate_categories([comment_summary] if comment_summary else []),
+                "importance": {
+                    "low": comment_summary.importance_low if comment_summary else 0,
+                    "medium": comment_summary.importance_medium if comment_summary else 0,
+                    "high": comment_summary.importance_high if comment_summary else 0,
+                    "important_comments": comment_summary.important_comments_count if comment_summary else 0,
+                },
+                "counts": {
+                    "responses": summary.responses_count if summary else 0,
+                    "comments": summary.comments_count if summary else 0,
+                    "important_comments": comment_summary.important_comments_count if comment_summary else 0,
+                },
+            }
         )
-        .filter(models.SurveyResponse.file_id.in_(chosen_ids))
-        .one()
-    )
-    self_evals = {
-        "preparation": _maybe_round(self_scores[0]),
-        "motivation": _maybe_round(self_scores[1]),
-        "applicability": _maybe_round(self_scores[2]),
-    }
 
-    return {
-        "average_score_transitions": transitions_by_metric,
-        "sentiment_analysis": sentiment,
-        "comment_categories": categories,
-        "self_evaluation_scores": self_evals,
-    }
-
-
+    return {"lectures": lectures_payload}

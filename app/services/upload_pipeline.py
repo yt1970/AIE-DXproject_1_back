@@ -4,7 +4,7 @@ import csv
 import io
 import logging
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Iterable, List
 from uuid import uuid4
 
@@ -16,36 +16,43 @@ from app.schemas.comment import UploadRequestMetadata
 
 logger = logging.getLogger(__name__)
 
-# （任意）で始まる列のみをLLM分析の対象とする
+# （任意）で始まる列をLLM分析対象とする
 LLM_ANALYSIS_TARGET_PREFIX = "（任意）"
-# 【必須】または（任意）で始まる列をコメントとしてDBに保存する
+# 【必須】または（任意）から始まる列をコメントとして保存
 COMMENT_SAVE_TARGET_PREFIXES = ("（任意）", "【必須】")
+ACCOUNT_ID_KEYS = ["アカウントID", "account_id", "アカウント ID"]
+ACCOUNT_NAME_KEYS = ["アカウント名", "account_name", "アカウント 名"]
 
 
 class CsvValidationError(ValueError):
-    """Raised when the uploaded CSV does not satisfy validation rules."""
+    """CSVが検証ルールを満たさない場合に送出される。"""
 
 
 def analyze_and_store_comments(
     *,
     db: Session,
     file_record: models.UploadedFile,
+    survey_batch: models.SurveyBatch,
     content_bytes: bytes,
-) -> tuple[int, int]:
+    debug_logging: bool = False,
+) -> tuple[int, int, int]:
     """
-    Parse the uploaded CSV, run LLM analysis for each comment, and persist the results.
+    CSVを解析しLLM分析と保存を実施する。
 
     Returns:
         total_comments: 総コメント件数
         processed_comments: LLM処理に成功したコメント件数
+        total_responses: アンケート回答行数
     """
 
     csv_reader, analyzable_columns = _prepare_csv_reader(content_bytes)
 
     total_comments = 0
     processed_comments = 0
+    total_responses = 0
+    debug_logs_enabled = debug_logging or logger.isEnabledFor(logging.DEBUG)
 
-    # 数値評価カラムとDBモデル属性のマッピング
+    # 数値評価カラムとモデル属性の対応表
     score_column_map = {
         "本日の総合的な満足度を５段階で教えてください。": "score_satisfaction_overall",
         "本日の講義内容について５段階で教えてください。\n学習量は適切だった": "score_satisfaction_content_volume",
@@ -61,41 +68,26 @@ def analyze_and_store_comments(
         "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_to_friend",
     }
 
-    for row in csv_reader:
-        # ★★★ デバッグログポイント 1: CSVの1行を読み込んだ直後の生データを表示 ★★★
-        # これで、CSVのヘッダー名が正しく認識されているか、値が空でないかを確認します。
-        logger.info("--- Processing new CSV row ---")
-        logger.info("Raw row data from CSV: %s", row)
+    for row_index, row in enumerate(csv_reader, start=1):
+        if debug_logs_enabled:
+            logger.debug("--- Processing new CSV row ---")
+            logger.debug("Raw row data from CSV: %s", row)
 
-        # ★★★ 修正点 ★★★
-        # 本番用の日本語ヘッダー名と、開発用の英語キー名の両方に対応する。
-        # ヘッダー名の揺れ（間の空白など）を吸収するため、複数の候補キーで検索し、その過程をログに出力する。
-        def get_value_from_keys(row_dict, keys):
-            for key in keys:
-                logger.info("  - Checking for key: '%s'", key)
-                if key in row_dict:
-                    logger.info("    => Found! Value: '%s'", row_dict[key])
-                    return row_dict[key]
-            logger.warning("  - None of the candidate keys found in the row.")
-            return None
+        account_id = _get_value_from_keys(row, ACCOUNT_ID_KEYS, debug_logs_enabled)
+        account_name = _get_value_from_keys(row, ACCOUNT_NAME_KEYS, debug_logs_enabled)
 
-        account_id_keys = ["アカウントID", "account_id", "アカウント ID"]
-        account_name_keys = ["アカウント名", "account_name", "アカウント 名"]
+        if debug_logs_enabled:
+            logger.debug(
+                "Extracted account_id: %s, account_name: %s", account_id, account_name
+            )
 
-        logger.info("--- Attempting to extract 'account_id' ---")
-        account_id = get_value_from_keys(row, account_id_keys)
-        logger.info("--- Attempting to extract 'account_name' ---")
-        account_name = get_value_from_keys(row, account_name_keys)
-
-        # ★★★ デバッグログポイント 2: 抽出したアカウント情報を表示 ★★★
-        # `row.get`の結果、account_idがどうなったかを確認します。
-        logger.info("Extracted account_id: %s, account_name: %s", account_id, account_name)
-
-        # 1. 数値評価を SurveyResponse テーブルに保存 (1行につき1レコード)
+        # 数値評価を1行1件でSurveyResponseに保存
         survey_response_data = {
             "file_id": file_record.file_id,
+            "survey_batch_id": survey_batch.id,
             "account_id": account_id,
             "account_name": account_name,
+            "row_index": row_index,
         }
         for col_name, attr_name in score_column_map.items():
             if col_name in row and row[col_name] and row[col_name].isdigit():
@@ -103,16 +95,16 @@ def analyze_and_store_comments(
         
         survey_response_record = models.SurveyResponse(**survey_response_data)
         db.add(survey_response_record)
-        # ★★★ 修正点 ★★★
-        # この時点で一度flushを実行し、survey_response_record.id を確定させる。
-        # これにより、後続のCommentオブジェクトが正しいIDを参照できるようになる。
+        # ResponseCommentが参照できるようIDを確定
         db.flush()
 
-        # 2. 自由記述コメントを Comment テーブルに保存 (複数レコードの可能性あり)
+        total_responses += 1
+
+        # 自由記述をResponseCommentに保存
         for column_name, comment_text in _extract_comment_texts(
             row, analyzable_columns
         ):
-            # このコメントがLLM分析の対象かどうかを判定
+            # LLM分析対象かを判定
             should_analyze_with_llm = column_name.startswith(LLM_ANALYSIS_TARGET_PREFIX)
 
             total_comments += 1
@@ -121,7 +113,7 @@ def analyze_and_store_comments(
                 comment_text,
                 course_name=file_record.course_name,
                 question_text=column_name,
-                # LLM分析が不要な場合は、フラグを渡して処理をスキップさせる
+                # 分析不要な場合はスキップフラグを渡す
                 skip_llm_analysis=not should_analyze_with_llm,
             )
             if analysis_result.warnings:
@@ -130,9 +122,12 @@ def analyze_and_store_comments(
                     "; ".join(analysis_result.warnings),
                 )
 
-            comment_to_add = models.Comment(
+            is_important = 1 if analysis_result.importance_level in ("medium", "high") else 0
+
+            comment_to_add = models.ResponseComment(
                 survey_response_id=survey_response_record.id,
                 file_id=file_record.file_id,
+                survey_batch_id=survey_batch.id,
                 account_id=account_id,
                 account_name=account_name,
                 question_text=column_name,
@@ -145,18 +140,24 @@ def analyze_and_store_comments(
                 llm_importance_level=analysis_result.importance_level,
                 llm_importance_score=analysis_result.importance_score,
                 llm_risk_level=analysis_result.risk_level,
-                processed_at=datetime.utcnow(),
+                processed_at=datetime.now(UTC),
                 analysis_version="preliminary",
+                is_important=is_important,
             )
 
-            # ★★★ デバッグログポイント 3: DBに保存する直前のオブジェクト内容を表示 ★★★
-            # DBに保存する直前のCommentオブジェクトの内容をログに出力
-            # ここで account_id が None になっていれば、問題はこれより前のステップにあります。
-            logger.info("Attempting to save Comment object with data: %s", comment_to_add.__dict__)
+            if debug_logs_enabled:
+                logger.debug(
+                    "Attempting to save Comment object with data: %s",
+                    comment_to_add.__dict__,
+                )
             db.add(comment_to_add)
             processed_comments += 1
 
-    return total_comments, processed_comments
+    survey_batch.total_responses = total_responses
+    survey_batch.total_comments = total_comments
+    db.add(survey_batch)
+
+    return total_comments, processed_comments, total_responses
 
 
 def validate_csv_or_raise(content_bytes: bytes) -> None:
@@ -248,3 +249,20 @@ def _slugify(raw_value: str, *, allow_period: bool = False) -> str:
     value = re.sub(pattern, "-", value)
     value = re.sub(r"-{2,}", "-", value).strip("-")
     return value or "value"
+
+
+def _get_value_from_keys(
+    row_dict: dict, keys: Iterable[str], debug_logs_enabled: bool
+) -> str | None:
+    if debug_logs_enabled:
+        logger.debug("--- Attempting to extract one of keys: %s", keys)
+    for key in keys:
+        if key in row_dict:
+            if debug_logs_enabled:
+                logger.debug("  => Found '%s': '%s'", key, row_dict[key])
+            return row_dict[key]
+        if debug_logs_enabled:
+            logger.debug("  - Missing key: '%s'", key)
+    if debug_logs_enabled:
+        logger.debug("  - None of the candidate keys found in the row.")
+    return None

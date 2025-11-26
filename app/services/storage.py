@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 try:
     import boto3
     from botocore.exceptions import BotoCoreError, ClientError
-except ModuleNotFoundError:  # pragma: no cover - handled in get_storage_client
+except ModuleNotFoundError:  # pragma: no cover - get_storage_clientで処理される
     boto3 = None  # type: ignore[assignment]
     BotoCoreError = ClientError = Exception  # type: ignore[assignment]
 
@@ -19,11 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class StorageError(RuntimeError):
-    """Raised when the storage backend cannot persist a file."""
+    """ストレージバックエンドがファイルを永続化できない場合に送出される。"""
 
 
 class StorageClient:
-    """Abstract storage client interface."""
+    """抽象ストレージクライアントインターフェース。"""
 
     def save(
         self,
@@ -42,7 +42,7 @@ class StorageClient:
 
 
 class LocalStorageClient(StorageClient):
-    """Persist files on the local filesystem (useful for development/testing)."""
+    """ローカルファイルシステムへ保存するクライアント（開発・テスト向け）。"""
 
     def __init__(self, base_directory: Path) -> None:
         self.base_directory = base_directory
@@ -87,7 +87,7 @@ class LocalStorageClient(StorageClient):
 
 
 class S3StorageClient(StorageClient):
-    """Upload files to an S3 bucket."""
+    """S3バケットへファイルをアップロードするクライアント。"""
 
     def __init__(
         self,
@@ -162,7 +162,7 @@ class S3StorageClient(StorageClient):
 
 
 def _safe_join(base_directory: Path, relative_path: str) -> Path:
-    """Join paths and prevent directory traversal outside of base_directory."""
+    """パスを連結し、base_directoryの外へディレクトリトラバーサルされるのを防ぐ。"""
     normalized = Path(_normalize_key(relative_path))
     full_path = base_directory.joinpath(normalized).resolve()
     if not str(full_path).startswith(str(base_directory.resolve())):
@@ -202,7 +202,7 @@ def _split_s3_uri(uri: str, *, default_bucket: str) -> Tuple[str, str]:
 
 @lru_cache(maxsize=1)
 def get_storage_client(settings: Optional[AppSettings] = None) -> StorageClient:
-    """Return a storage client configured for the current environment."""
+    """現在の環境設定に応じたストレージクライアントを返す。"""
     app_settings = settings or get_settings()
     storage_settings = app_settings.storage
 
@@ -216,11 +216,10 @@ def get_storage_client(settings: Optional[AppSettings] = None) -> StorageClient:
             settings=app_settings,
         )
 
-    base_directory = storage_settings.local_directory_path
-    base_directory.mkdir(parents=True, exist_ok=True)
+    base_directory = storage_settings.ensure_local_directory()
     return LocalStorageClient(base_directory=base_directory)
 
 
 def clear_storage_client_cache() -> None:
-    """For testing: reset the cached storage client."""
+    """テスト向け: キャッシュ済みのストレージクライアントをリセットする。"""
     get_storage_client.cache_clear()  # type: ignore[attr-defined]

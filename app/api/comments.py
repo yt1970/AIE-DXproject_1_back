@@ -1,12 +1,3 @@
-# app/api/comments.py
-
-# ----------------------------------------------------------------------
-# このファイル全体の役割
-# ----------------------------------------------------------------------
-# このファイルは、完了した分析結果をクライアントに提供するためのAPIエンドポイントを定義します。
-# 特定の講義に関連するコメントの分析結果を一覧で取得する機能などを担います。
-# ----------------------------------------------------------------------
-
 import logging
 from typing import List
 
@@ -15,19 +6,11 @@ from sqlalchemy.orm import Session, contains_eager
 
 from app.db import models
 from app.db.session import get_db
-
-# --- 内部モジュールのインポート ---
 from app.schemas.comment import CommentAnalysisSchema
 
-# ----------------------------------------------------------------------
-# ルーターの初期化
-# ----------------------------------------------------------------------
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# ----------------------------------------------------------------------
-# エンドポイントの定義
-# ----------------------------------------------------------------------
 
 @router.get(
     "/courses/{course_name}/comments",
@@ -40,10 +23,7 @@ def get_course_comments(
     version: str | None = None,
     db: Session = Depends(get_db),
 ):
-    """
-    講義名単位で最新のコメント分析結果を取得する。
-    """
-
+    """講義名単位で最新のコメント分析結果を取得する。"""
     query = (
         db.query(models.Comment)
         .join(models.UploadedFile, models.Comment.file_id == models.UploadedFile.file_id)
@@ -60,8 +40,6 @@ def get_course_comments(
         query.order_by(models.Comment.id.desc()).offset(skip).limit(limit).all()
     )
 
-    # ★★★ デバッグログポイント 4: DBから取得したオブジェクト内容を詳細に表示 ★★★
-    # DBから取得した最初のCommentオブジェクトと、関連するSurveyResponseの内容をログに出力します。
     if comments_with_scores:
         first_comment = comments_with_scores[0]
         logger.info("--- Fetched data from DB for API response ---")

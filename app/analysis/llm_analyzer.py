@@ -20,22 +20,35 @@ def analyze_with_llm(
     """
     LLMを使用してコメントを多角的に分析し、結果を統合して返す。
     """
-    # 各タスクが担当するキーを明示的に定義
-    analysis_tasks = {
+    # 各タスクが担当するキーを明示的に定義（full_analysisは使わず個別タスクのみ）
+    core_tasks = {
         "sentiment": {"sentiment"},
         "importance": {"importance_level", "importance_score"},
         "categorization": {"category", "tags"},
         "risk_assessment": {"risk_level", "is_safe"},
     }
-    # full_analysisは全てのキーを担当する可能性がある
-    all_known_keys = set.union(*analysis_tasks.values(), {"summary"})
-    analysis_tasks["full_analysis"] = all_known_keys
+    all_known_keys = set.union(*core_tasks.values(), {"summary"})
+    analysis_tasks = core_tasks
 
     merged_results: Dict[str, Any] = {}
     merged_warnings: List[str] = []
     merged_raw: Dict[str, Any] = {}
 
-    for task_name in analysis_tasks:
+    def merge_task_result(task_name: str, result: LLMAnalysisResult) -> None:
+        task_keys = analysis_tasks.get(task_name, all_known_keys)
+        response_data = result.model_dump(exclude_unset=True)
+        for key, value in response_data.items():
+            if key in task_keys:
+                merged_results[key] = value
+            else:
+                merged_warnings.append(
+                    f"Task '{task_name}' returned unexpected key: '{key}'"
+                )
+
+        merged_warnings.extend(result.warnings)
+        merged_raw[task_name] = result.raw
+
+    def run_task(task_name: str) -> None:
         try:
             result = llm_client.analyze_comment(
                 comment_text,
@@ -43,25 +56,25 @@ def analyze_with_llm(
                 course_name=course_name,
                 question_text=question_text,
             )
-            
-            # タスクが担当外のキーを返していないかチェック
-            task_keys = analysis_tasks.get(task_name, all_known_keys)
-            response_data = result.model_dump(exclude_unset=True)
-            for key in response_data:
-                if key in task_keys:
-                    merged_results[key] = response_data[key]
-                else:
-                    merged_warnings.append(
-                        f"Task '{task_name}' returned unexpected key: '{key}'"
-                    )
-
-            merged_warnings.extend(result.warnings)
-            merged_raw[task_name] = result.raw
         except (LLMClientError, ValueError) as exc:
             warning = f"LLM analysis for '{task_name}' failed: {exc}"
             logger.warning(warning)
             merged_warnings.append(warning)
             merged_raw[task_name] = {"error": str(exc)}
+            return
+
+        merge_task_result(task_name, result)
+
+    def has_value(key: str) -> bool:
+        """None以外の値が既に入っているかを確認する。"""
+        return merged_results.get(key) is not None
+
+    for task_name, task_keys in analysis_tasks.items():
+        if not any(not has_value(key) for key in task_keys):
+            continue
+        run_task(task_name)
+
+    merged_warnings = list(dict.fromkeys(merged_warnings))
 
     try:
         llm_structured = LLMAnalysisResult.model_validate(merged_results)

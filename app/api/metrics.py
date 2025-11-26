@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -62,7 +62,7 @@ def upsert_metrics(
 
     metrics.zoom_participants = payload.zoom_participants
     metrics.recording_views = payload.recording_views
-    metrics.updated_at = datetime.utcnow()
+    metrics.updated_at = datetime.now(UTC)
     db.add(metrics)
     db.commit()
     db.refresh(metrics)
@@ -75,20 +75,21 @@ def upsert_metrics(
     )
 
 def _choose_target_file_for_lecture(db: Session, lecture_id: int) -> int | None:
-    """Pick finalized file for lecture or fallback to latest upload."""
-    files = (
-        db.query(models.UploadedFile)
+    """Pick finalized file for lecture or fallback to latest upload in one query."""
+    row = (
+        db.query(models.UploadedFile.file_id)
         .filter(models.UploadedFile.lecture_id == lecture_id)
-        .all()
+        .order_by(
+            models.UploadedFile.finalized_at.is_(None),
+            models.UploadedFile.finalized_at.desc(),
+            models.UploadedFile.upload_timestamp.desc(),
+        )
+        .first()
     )
-    if not files:
+    if not row:
         return None
-    finalized = [f for f in files if f.finalized_at is not None]
-    if finalized:
-        chosen = max(finalized, key=lambda f: f.finalized_at)
-    else:
-        chosen = max(files, key=lambda f: f.upload_timestamp)
-    return chosen.file_id
+    # row is a tuple when selecting a single column; index for clarity
+    return int(row[0])
 
 
 @router.get("/lectures/{lecture_id}/metrics", response_model=LectureMetricsResponse)
@@ -142,7 +143,7 @@ def upsert_metrics_by_lecture(
         metrics = models.LectureMetrics(file_id=file_id)
     metrics.zoom_participants = payload.zoom_participants
     metrics.recording_views = payload.recording_views
-    metrics.updated_at = datetime.utcnow()
+    metrics.updated_at = datetime.now(UTC)
     db.add(metrics)
     db.commit()
     db.refresh(metrics)

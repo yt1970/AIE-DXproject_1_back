@@ -1,3 +1,5 @@
+"""APIエンドポイントのテスト"""
+
 from __future__ import annotations
 
 import json
@@ -18,12 +20,12 @@ from app.db import session as session_module
 from app.services.storage import clear_storage_client_cache
 
 
-@pytest.fixture(name="integration_client")
-def fixture_integration_client(
-    tmp_path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[TestClient, None, None]:
-    db_path = tmp_path / "integration.sqlite3"
+@pytest.fixture(name="client")
+def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
+    """テスト用のクライアントを作成（データベースセットアップ済み）"""
+    db_path = tmp_path / "test.sqlite3"
     uploads_dir = tmp_path / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("UPLOAD_BACKEND", "local")
@@ -70,7 +72,12 @@ def fixture_integration_client(
         clear_storage_client_cache()
 
 
+# ============================================================================
+# ヘルパー関数
+# ============================================================================
+
 def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> int:
+    """テスト用のアップロードを実行し、file_idを返す"""
     metadata = {
         "course_name": course,
         "lecture_date": date,
@@ -97,9 +104,150 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
     return response.json()["file_id"]
 
 
-def test_courses_list_returns_distinct_sorted(integration_client: TestClient) -> None:
-    client = integration_client
+# ============================================================================
+# 基本動作確認テスト
+# ============================================================================
 
+def test_health_endpoint(client: TestClient):
+    """ヘルスチェックエンドポイントの動作確認"""
+    response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert "timestamp" in data
+    assert "app_name" in data
+
+
+def test_courses_list_endpoint(client: TestClient):
+    """コース一覧エンドポイントの動作確認（空のリストでもOK）"""
+    response = client.get("/api/v1/courses")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_courses_list_with_params(client: TestClient):
+    """コース一覧エンドポイントのパラメータ付きリクエスト"""
+    response = client.get("/api/v1/courses", params={"name": "test", "sort_by": "course_name"})
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_lectures_list_endpoint(client: TestClient):
+    """講義一覧エンドポイントの動作確認"""
+    response = client.get("/api/v1/lectures")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+
+def test_lectures_metadata_endpoint(client: TestClient):
+    """講義メタデータエンドポイントの動作確認"""
+    response = client.get("/api/v1/lectures/metadata")
+    assert response.status_code == 200
+    data = response.json()
+    assert "courses" in data
+    assert "years" in data
+    assert "terms" in data
+    assert isinstance(data["courses"], list)
+    assert isinstance(data["years"], list)
+    assert isinstance(data["terms"], list)
+
+
+def test_upload_check_duplicate_endpoint(client: TestClient):
+    """重複チェックエンドポイントの動作確認"""
+    response = client.get(
+        "/api/v1/uploads/check-duplicate",
+        params={
+            "course_name": "Test Course",
+            "lecture_date": "2024-01-01",
+            "lecture_number": 1,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "exists" in data
+    assert "file_id" in data
+    assert isinstance(data["exists"], bool)
+
+
+def test_comments_endpoint_not_found(client: TestClient):
+    """存在しないコースのコメント取得"""
+    response = client.get("/api/v1/courses/NonExistentCourse/comments")
+    # コースが存在しない場合でも、空のリストが返る可能性があるため、200または404を許容
+    assert response.status_code in [200, 404]
+
+
+def test_analysis_status_endpoint_not_found(client: TestClient):
+    """存在しないファイルIDのステータス取得（404が返ることを確認）"""
+    response = client.get("/api/v1/uploads/99999/status")
+    assert response.status_code == 404
+
+
+def test_metrics_endpoint_not_found(client: TestClient):
+    """存在しないファイルIDのメトリクス取得（404が返ることを確認）"""
+    response = client.get("/api/v1/uploads/99999/metrics")
+    assert response.status_code == 404
+
+
+def test_dashboard_overview_endpoint_not_found(client: TestClient):
+    """存在しない講義IDのダッシュボード取得（404が返ることを確認）"""
+    response = client.get("/api/v1/dashboard/99999/overview")
+    assert response.status_code == 404
+
+
+def test_dashboard_per_lecture_endpoint_not_found(client: TestClient):
+    """存在しない講義IDの講義ごとダッシュボード取得（空データが返ることを確認）"""
+    response = client.get("/api/v1/dashboard/99999/per_lecture")
+    # 存在しない講義IDでも空データを返す実装のため200を期待
+    assert response.status_code == 200
+    data = response.json()
+    assert "lectures" in data
+    assert data["lectures"] == []
+
+
+def test_lecture_metrics_endpoint_not_found(client: TestClient):
+    """存在しない講義IDのメトリクス取得（404が返ることを確認）"""
+    response = client.get("/api/v1/lectures/99999/metrics")
+    assert response.status_code == 404
+
+
+def test_delete_upload_endpoint_not_found(client: TestClient):
+    """存在しないファイルIDの削除（404が返ることを確認）"""
+    response = client.delete("/api/v1/uploads/99999")
+    assert response.status_code == 404
+
+
+def test_finalize_endpoint_not_found(client: TestClient):
+    """存在しないファイルIDの確定（404が返ることを確認）"""
+    response = client.post("/api/v1/uploads/99999/finalize")
+    assert response.status_code == 404
+
+
+def test_api_routes_registered(client: TestClient):
+    """主要なAPIルートが登録されていることを確認"""
+    # OpenAPIスキーマを取得してルートを確認
+    response = client.get("/openapi.json")
+    assert response.status_code == 200
+    openapi_schema = response.json()
+    paths = openapi_schema.get("paths", {})
+    
+    # 主要なエンドポイントが存在することを確認
+    expected_paths = [
+        "/health",
+        "/api/v1/courses",
+        "/api/v1/lectures",
+        "/api/v1/uploads/check-duplicate",
+    ]
+    
+    for path in expected_paths:
+        assert path in paths, f"Path {path} not found in OpenAPI schema"
+
+
+# ============================================================================
+# 統合テスト
+# ============================================================================
+
+def test_courses_list_returns_distinct_sorted(client: TestClient) -> None:
+    """コース一覧が重複なく、ソートされて返ることを確認"""
     _post_upload(client, course="Course Z", date="2024-05-01", number=1)
     _post_upload(client, course="Course A", date="2024-05-02", number=1)
     # 重複する講座名
@@ -115,9 +263,8 @@ def test_courses_list_returns_distinct_sorted(integration_client: TestClient) ->
         assert "period" in i
 
 
-def test_duplicate_check_endpoint(integration_client: TestClient) -> None:
-    client = integration_client
-
+def test_duplicate_check_endpoint(client: TestClient) -> None:
+    """重複チェックエンドポイントの動作確認（実際のデータを使用）"""
     file_id = _post_upload(client, course="Dup Course", date="2024-05-10", number=1)
 
     # 既存 => True
@@ -147,9 +294,8 @@ def test_duplicate_check_endpoint(integration_client: TestClient) -> None:
     assert r2.json() == {"exists": False, "file_id": None}
 
 
-def test_finalize_and_version_filter(integration_client: TestClient) -> None:
-    client = integration_client
-
+def test_finalize_and_version_filter(client: TestClient) -> None:
+    """確定処理とバージョンフィルタの動作確認"""
     file_id = _post_upload(client, course="Version Course", date="2024-06-01", number=1)
 
     # finalize
@@ -166,11 +312,8 @@ def test_finalize_and_version_filter(integration_client: TestClient) -> None:
     assert len(comments) > 0
 
 
-def test_delete_uploaded_analysis_removes_db_and_file(
-    integration_client: TestClient,
-) -> None:
-    client = integration_client
-
+def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> None:
+    """アップロード削除時にDBとファイルの両方が削除されることを確認"""
     file_id = _post_upload(client, course="Del Course", date="2024-05-20", number=1)
 
     # s3_key 取得と現存確認
@@ -220,9 +363,8 @@ def test_delete_uploaded_analysis_removes_db_and_file(
     assert status_resp.status_code == 404
 
 
-def test_metrics_upsert_and_get(integration_client: TestClient) -> None:
-    client = integration_client
-
+def test_metrics_upsert_and_get(client: TestClient) -> None:
+    """メトリクスの作成・更新・取得の動作確認"""
     file_id = _post_upload(client, course="Metrics Course", date="2024-06-10", number=1)
 
     # initial GET -> empty
@@ -250,9 +392,8 @@ def test_metrics_upsert_and_get(integration_client: TestClient) -> None:
     assert body2["recording_views"] == 345
 
 
-def test_delete_rejects_processing_state(integration_client: TestClient) -> None:
-    client = integration_client
-
+def test_delete_rejects_processing_state(client: TestClient) -> None:
+    """処理中のファイルの削除が拒否されることを確認"""
     # 処理中レコードを直接投入
     db = session_module.SessionLocal()
     try:
@@ -277,4 +418,3 @@ def test_delete_rejects_processing_state(integration_client: TestClient) -> None
 
     resp = client.delete(f"/api/v1/uploads/{rec_id}")
     assert resp.status_code == 409
-

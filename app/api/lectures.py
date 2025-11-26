@@ -34,7 +34,7 @@ def list_lectures(
     sort_by: str = "course_name",
     sort_order: str = "asc",
 ) -> List[LectureInfo]:
-    """Return list of lectures with optional filters and sorting."""
+    """オプションのフィルタとソート機能付きで講義の一覧を返す。"""
     q = db.query(models.Lecture)
     if name:
         q = q.filter(func.lower(models.Lecture.course_name).like(f"%{name.lower()}%"))
@@ -65,8 +65,8 @@ def list_lectures(
 
 @router.get("/lectures/metadata")
 def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
-    """Return metadata for form dropdowns (courses/years/terms)."""
-    # From lecture table
+    """フォームのドロップダウン用のメタデータを返す。コース、年度、期間を含む。"""
+    # 講義テーブルから取得
     courses = [row[0] for row in db.query(models.Lecture.course_name).distinct().all() if row[0]]
     years = [row[0] for row in db.query(models.Lecture.academic_year).distinct().all() if row[0] is not None]
     terms = [row[0] for row in db.query(models.Lecture.period).distinct().all() if row[0]]
@@ -82,18 +82,18 @@ def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
             if row[0]
         ]
         years = [int(y) for y in years if y.isdigit()]
-    # terms fallback cannot be derived from uploaded_file; leave as empty if missing
+    # 期間のフォールバックはアップロードファイルから取得できないため、欠落時は空のままにする
 
     return {"courses": courses, "years": years, "terms": terms}
 
 
 @router.post("/lectures", response_model=LectureInfo)
 def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> LectureInfo:
-    """Create a lecture, rejecting duplicates on (course_name, academic_year, period)."""
+    """講義を作成する。コース名、年度、期間の組み合わせで重複を拒否する。"""
     course_name = _normalize_text(payload.course_name)
     period = _normalize_text(payload.period)
     if not course_name or not period:
-        raise HTTPException(status_code=422, detail="course_name and period are required")
+        raise HTTPException(status_code=422, detail="コース名と期間は必須です")
     # Pydantic Enumがバリデーションするため、ここでは変換のみ
     category = payload.category or LectureCategory.その他
 
@@ -107,7 +107,7 @@ def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> Lec
         .first()
     )
     if exists:
-        raise HTTPException(status_code=409, detail="Lecture already exists")
+        raise HTTPException(status_code=409, detail="講義は既に存在します")
 
     lec = models.Lecture(
         course_name=course_name,
@@ -127,10 +127,10 @@ def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> Lec
 def update_lecture(
     lecture_id: int, payload: LectureUpdate, db: Session = Depends(get_db)
 ) -> LectureInfo:
-    """Update lecture fields, preventing duplicates after update."""
+    """講義のフィールドを更新する。更新後の重複を防止する。"""
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+        raise HTTPException(status_code=404, detail="講義が見つかりません")
 
     # Pydantic Enumがバリデーションするため追加チェックは不要
 
@@ -139,7 +139,7 @@ def update_lecture(
     if payload.period is not None:
         norm = _normalize_text(payload.period)
         if not norm:
-            raise HTTPException(status_code=422, detail="period cannot be empty")
+            raise HTTPException(status_code=422, detail="期間は空にできません")
         lec.period = norm
     if payload.academic_year is not None:
         lec.academic_year = payload.academic_year
@@ -158,7 +158,7 @@ def update_lecture(
         .first()
     )
     if dup:
-        raise HTTPException(status_code=409, detail="Duplicated lecture after update")
+        raise HTTPException(status_code=409, detail="更新後に重複する講義が存在します")
 
     db.add(lec)
     db.commit()
@@ -169,22 +169,22 @@ def update_lecture(
 
 @router.delete("/lectures/{lecture_id}")
 def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
-    """Delete a lecture and associated uploads/comments/metrics. Use carefully."""
+    """講義と関連するアップロード、コメント、メトリクスを削除する。注意して使用すること。"""
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
-        raise HTTPException(status_code=404, detail="Lecture not found")
+        raise HTTPException(status_code=404, detail="講義が見つかりません")
     files = db.query(models.UploadedFile).filter(models.UploadedFile.lecture_id == lecture_id).all()
-    # Block deletion if any file is processing
+    # 処理中のファイルがある場合は削除をブロック
     if any(f.status == "PROCESSING" for f in files):
-        raise HTTPException(status_code=409, detail="Some uploads are currently processing")
-    # Delete related records per file
+        raise HTTPException(status_code=409, detail="一部のアップロードが現在処理中です")
+    # ファイルごとに関連レコードを削除
     from app.services import get_storage_client
     storage = get_storage_client()
     removed_comments = 0
     removed_survey_responses = 0
     removed_metrics = 0
     for f in files:
-        # best-effort delete storage object
+        # ストレージオブジェクトをベストエフォートで削除
         try:
             if f.s3_key:
                 storage.delete(uri=f.s3_key)
@@ -200,7 +200,7 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
             db.query(models.LectureMetrics).filter(models.LectureMetrics.file_id == f.file_id).delete(synchronize_session=False) or 0
         )
         db.query(models.UploadedFile).filter(models.UploadedFile.file_id == f.file_id).delete(synchronize_session=False)
-    # finally delete lecture
+    # 最後に講義を削除
     db.query(models.Lecture).filter(models.Lecture.id == lecture_id).delete(synchronize_session=False)
     db.commit()
     return {

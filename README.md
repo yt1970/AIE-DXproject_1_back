@@ -10,6 +10,10 @@ docker compose up --build
 
 http://localhost:8000/docs にアクセスしてインタラクティブなAPIドキュメントを探索してください。スタックを停止するには `docker compose down` を使用してください。
 
+## ドキュメント
+- コンポーネントガイド: `docs/component_guide.md`（フォルダ単位の役割と主要ファイル）
+- 詳細設計/データフロー: `docs/backend_system_design.md`
+
 ## 開発ワークフロー
 
 - 環境固有のシークレットはローカルの `.env` ファイルに保存してください。

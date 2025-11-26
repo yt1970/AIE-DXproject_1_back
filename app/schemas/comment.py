@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 
 # (出力) ファイルアップロード成功時の応答スキーマ
@@ -38,6 +38,8 @@ class AnalysisStatusResponse(BaseModel):
 
 # (出力) 分析結果（コメント一覧）のスキーマ
 class CommentAnalysisSchema(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     # ユーザー情報をCommentモデルから直接取得する
     account_id: Optional[str] = None
     account_name: Optional[str] = None
@@ -55,27 +57,20 @@ class CommentAnalysisSchema(BaseModel):
     @computed_field
     @property
     def score_satisfaction_overall(self) -> Optional[int]:
-        if self.survey_response:
-            return self.survey_response.score_satisfaction_overall
-        return None
+        sr = self.survey_response
+        return sr.score_satisfaction_overall if sr else None
 
     @computed_field
     @property
     def score_satisfaction_content_understanding(self) -> Optional[int]:
-        if self.survey_response:
-            return self.survey_response.score_satisfaction_content_understanding
-        return None
+        sr = self.survey_response
+        return sr.score_satisfaction_content_understanding if sr else None
 
     @computed_field
     @property
     def score_satisfaction_instructor_overall(self) -> Optional[int]:
-        if self.survey_response:
-            return self.survey_response.score_satisfaction_instructor_overall
-        return None
-
-    class Config:
-        # DBモデルからの変換を許可 (SQLAlchemy ORMとの連携用)
-        from_attributes = True
+        sr = self.survey_response
+        return sr.score_satisfaction_instructor_overall if sr else None
 
     # survey_responseリレーションを読み込むが、JSONには出力しないフィールド
     survey_response: Optional[Any] = Field(default=None, exclude=True)
@@ -104,9 +99,3 @@ class LectureMetricsPayload(BaseModel):
 class LectureMetricsResponse(LectureMetricsPayload):
     file_id: int
     updated_at: Optional[datetime] = None
-
-
-class CourseListingItem(BaseModel):
-    course_name: str
-    academic_year: Optional[str] = None
-    period: Optional[str] = None
