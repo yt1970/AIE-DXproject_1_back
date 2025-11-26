@@ -3,6 +3,11 @@ from sqlalchemy import Column, Integer, MetaData, Table, Text, create_engine, in
 from app.db.migrations import apply_migrations
 
 
+def _target_comment_table(inspector):
+    table_names = inspector.get_table_names()
+    return "response_comment" if "response_comment" in table_names else "comment"
+
+
 def test_apply_migrations_adds_missing_columns() -> None:
     engine = create_engine("sqlite:///:memory:")
     metadata = MetaData()
@@ -17,7 +22,8 @@ def test_apply_migrations_adds_missing_columns() -> None:
     apply_migrations(engine)
 
     inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("comment")}
+    table_name = _target_comment_table(inspector)
+    columns = {column["name"] for column in inspector.get_columns(table_name)}
 
     assert {"llm_importance_level", "llm_importance_score", "llm_risk_level"} <= columns
 
@@ -39,7 +45,8 @@ def test_apply_migrations_is_idempotent() -> None:
     apply_migrations(engine)
 
     inspector = inspect(engine)
-    columns = [column["name"] for column in inspector.get_columns("comment")]
+    table_name = _target_comment_table(inspector)
+    columns = [column["name"] for column in inspector.get_columns(table_name)]
     assert columns.count("llm_importance_level") == 1
     assert columns.count("llm_importance_score") == 1
     assert columns.count("llm_risk_level") == 1
