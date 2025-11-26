@@ -20,16 +20,15 @@ def analyze_with_llm(
     """
     LLMを使用してコメントを多角的に分析し、結果を統合して返す。
     """
-    # 各タスクが担当するキーを明示的に定義
+    # 各タスクが担当するキーを明示的に定義（full_analysisは使わず個別タスクのみ）
     core_tasks = {
         "sentiment": {"sentiment"},
         "importance": {"importance_level", "importance_score"},
         "categorization": {"category", "tags"},
         "risk_assessment": {"risk_level", "is_safe"},
     }
-    # full_analysisは全てのキーを担当する可能性がある
     all_known_keys = set.union(*core_tasks.values(), {"summary"})
-    analysis_tasks = {**core_tasks, "full_analysis": all_known_keys}
+    analysis_tasks = core_tasks
 
     merged_results: Dict[str, Any] = {}
     merged_warnings: List[str] = []
@@ -70,12 +69,7 @@ def analyze_with_llm(
         """None以外の値が既に入っているかを確認する。"""
         return merged_results.get(key) is not None
 
-    # まずfull_analysisでまとめて取得し、足りない項目のみ個別タスクを呼ぶ
-    run_task("full_analysis")
-
     for task_name, task_keys in analysis_tasks.items():
-        if task_name == "full_analysis":
-            continue
         if not any(not has_value(key) for key in task_keys):
             continue
         run_task(task_name)
