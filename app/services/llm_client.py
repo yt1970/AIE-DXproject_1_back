@@ -14,9 +14,7 @@ from app.core.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
 # プロンプト定義
-# ---------------------------------------------------------------------------
 
 PROMPT_TEMPLATE_BASE = """
 あなたは大学の講義改善を支援する優秀なアシスタントです。
@@ -37,26 +35,22 @@ PROMPT_TEMPLATE_BASE = """
 {instructions}
 """
 
-# ---------------------------------------------------------------------------
 # 例外定義
-# ---------------------------------------------------------------------------
 class LLMClientError(Exception):
-    """ベースとなるLLMクライアント例外。"""
+    """LLMクライアント共通例外。"""
 
 
 class LLMTimeoutError(LLMClientError):
-    """LLM呼び出しのタイムアウトを表す例外。"""
+    """LLM呼び出しのタイムアウト。"""
 
 
 class LLMResponseFormatError(LLMClientError):
-    """LLM応答の形式が想定外だった場合に送出。"""
+    """LLM応答形式が想定外のとき。"""
 
 
-# ---------------------------------------------------------------------------
 # Pydanticモデル定義
-# ---------------------------------------------------------------------------
 class LLMAnalysisResult(BaseModel):
-    """LLMから取得した分析情報を正規化したデータモデル。"""
+    """LLM応答を正規化したモデル。"""
 
     category: Optional[str] = None
     importance_level: Optional[str] = Field(
@@ -82,7 +76,7 @@ class LLMAnalysisResult(BaseModel):
 
 
 class LLMClientConfig(BaseModel):
-    """LLMクライアントの設定値。"""
+    """LLMクライアント設定。"""
 
     provider: Literal["mock", "generic", "openai", "azure_openai"] = "mock"
     base_url: Optional[str] = Field(
@@ -113,12 +107,10 @@ class LLMClientConfig(BaseModel):
         return self.provider != "mock"
 
 
-# ---------------------------------------------------------------------------
 # クライアント本体
-# ---------------------------------------------------------------------------
 @dataclass
 class LLMClient:
-    """LLM APIとの通信とレスポンス整形を担当するクライアント。"""
+    """LLM APIとの通信と整形を行う。"""
 
     config: LLMClientConfig
     transport: Optional[httpx.BaseTransport] = None
@@ -137,12 +129,12 @@ class LLMClient:
         course_name: Optional[str] = None,
         question_text: Optional[str] = None,
     ) -> LLMAnalysisResult:
-        """コメントをLLMに送信し、整形済みの分析結果を返す。"""
+        """コメントをLLMに投げ整形済み結果を返す。"""
         if not comment_text:
             raise ValueError("comment_text must not be empty")
 
         if self.config.provider == "mock":
-            # モックの場合、分析タイプに関わらず固定値を返す
+            # モックは分析タイプを問わず固定値を返す
             logger.debug(
                 "LLM provider is 'mock'. Returning mock response for task: %s",
                 analysis_type,
@@ -162,8 +154,7 @@ class LLMClient:
                     "importance_score": 0.1, "risk_level": "none", "is_safe": True,
                     "summary": comment_text[:50], "tags": [],
                 }
-            # 実際のLLM応答にはrawやwarningsは含まれないため、ここでは返さない
-            # これらは呼び出し元でエラーハンドリングの結果として追加される
+            # 実応答にはraw/warningsが無いので呼び出し側で補完する
             return LLMAnalysisResult.model_validate(mock_payload)
 
         payload = self._build_payload(
@@ -214,9 +205,9 @@ class LLMClient:
                 warnings=[warning, str(exc)],
             )
 
-        # 正規化済みのrawデータを格納（Validationで上書きされる場合があるため再設定）
+        # 正規化後にrawを再設定
         result.raw = structured_payload
-        # Validationが成功した場合でも正規化時の警告があれば付与
+        # 正規化で出た警告を重複なく統合
         normalized_warnings = normalized_payload.get("warnings", [])
         if normalized_warnings:
             result.warnings.extend(
@@ -225,9 +216,7 @@ class LLMClient:
 
         return result
 
-    # ------------------------------------------------------------------
     # 内部ユーティリティ
-    # ------------------------------------------------------------------
     def _build_payload(
         self,
         comment_text: str,
@@ -260,7 +249,7 @@ class LLMClient:
                 payload["response_format"] = {"type": "json_object"}
             return payload
 
-        # genericプロバイダ向けのシンプルなリクエスト
+        # generic向けの簡易リクエスト
         request_body: Dict[str, Any] = {
             "comment": comment_text,
             "instructions": final_prompt,
@@ -302,9 +291,7 @@ class LLMClient:
         return self._unwrap_response_body(body)
 
     def _unwrap_response_body(self, body: Any) -> Dict[str, Any]:
-        """
-        各種プロバイダのレスポンス形式を吸収して、最終的に辞書を返す。
-        """
+        """プロバイダごとの応答を辞書に正規化する。"""
         if isinstance(body, dict):
             candidate_keys = ("analysis", "result", "data")
             for key in candidate_keys:
@@ -380,7 +367,7 @@ class LLMClient:
 
     def _strip_code_fences(self, text: str) -> str:
         if text.startswith("```"):
-            # 先頭の ```lang を除去
+            # 先頭の```langを除去
             parts = text.split("\n", 1)
             text = parts[1] if len(parts) > 1 else ""
         if text.endswith("```"):
@@ -398,7 +385,7 @@ class LLMClient:
         normalized = dict(payload)
         warnings: List[str] = []
 
-        # キーのバリエーションを吸収
+        # 代表的なキー差異を吸収
         key_aliases = {
             "importance": "importance_level",
             "importanceLevel": "importance_level",
@@ -415,7 +402,7 @@ class LLMClient:
             if alias in normalized and target not in normalized:
                 normalized[target] = normalized[alias]
 
-        # スコアが文字列で返ってきた場合の対応
+        # 文字列スコアを数値化
         score_keys = ("importance_score", "importanceScore")
         for key in score_keys:
             if key in normalized:
@@ -431,7 +418,7 @@ class LLMClient:
                     )
                 break
 
-        # 真偽値の正規化
+        # 真偽値をboolに統一
         if "is_safe" in normalized and not isinstance(normalized["is_safe"], bool):
             value = normalized["is_safe"]
             if isinstance(value, str):
@@ -456,9 +443,7 @@ class LLMClient:
         return normalized
 
 
-# ---------------------------------------------------------------------------
 # 設定読み込みヘルパー
-# ---------------------------------------------------------------------------
 @lru_cache
 def build_default_llm_config() -> LLMClientConfig:
     """環境変数からLLMクライアントの設定を構築する。"""
