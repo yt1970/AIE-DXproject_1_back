@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime, date
+from datetime import UTC, date, datetime
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -169,4 +169,3 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     assert session.closed
     assert file_record.status == tasks.COMPLETED_STATUS
     assert survey_batch.status == tasks.COMPLETED_STATUS
-

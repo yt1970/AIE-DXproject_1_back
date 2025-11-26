@@ -10,9 +10,9 @@ from sqlalchemy import inspect, text
 os.environ.setdefault("PYTHON_DOTENV_SKIP_DOTENV", "1")
 os.environ.setdefault("APP_SKIP_DOTENV", "1")
 
-from app.core import settings as settings_module
 import app.db.init_db as init_db_module
 import app.db.session as session_module
+from app.core import settings as settings_module
 
 
 @pytest.fixture
@@ -76,4 +76,3 @@ def test_init_db_creates_expected_tables(session_reloader):
     }
 
     assert expected_tables <= tables
-

@@ -3,7 +3,6 @@
 import logging
 
 from app.db.models import Base
-
 from app.db.session import engine
 
 logging.basicConfig(level=logging.INFO)
