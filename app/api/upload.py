@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 QUEUED_STATUS = "QUEUED"
+
+
 @router.get("/uploads/check-duplicate", response_model=DuplicateCheckResponse)
 def check_duplicate_upload(
     *,
@@ -235,7 +237,6 @@ def finalize_analysis(
     return {"file_id": file_id, "finalized": True, "final_count": created}
 
 
-
 @router.post("/uploads", response_model=UploadResponse)
 async def upload_and_enqueue_analysis(
     file: Annotated[UploadFile, File()],
@@ -250,9 +251,7 @@ async def upload_and_enqueue_analysis(
     try:
         metadata = metadata_adapter.validate_json(metadata_json)
     except (ValidationError, json.JSONDecodeError) as exc:
-        raise HTTPException(
-            status_code=422, detail=f"Invalid metadata format: {exc}"
-        )
+        raise HTTPException(status_code=422, detail=f"Invalid metadata format: {exc}")
 
     try:
         content_bytes = await file.read()
@@ -326,7 +325,7 @@ async def upload_and_enqueue_analysis(
 
     try:
         async_result = process_uploaded_file.delay(file_id=new_file_record.file_id)
-    except Exception as exc: 
+    except Exception as exc:
         logger.exception("Failed to enqueue background task.")
         db.refresh(new_file_record)
         new_file_record.status = "FAILED"
@@ -363,7 +362,7 @@ class UploadIdentityDeleteRequest(BaseModel):
     academic_year: str | None = None
     period: str | None = None
     lecture_number: int
-    analysis_version: str | None = None 
+    analysis_version: str | None = None
 
 
 @router.delete("/uploads/by-identity", response_model=DeleteUploadResponse)
@@ -397,9 +396,13 @@ def delete_uploaded_by_identity(
     removed_survey_responses = 0
 
     # 指定されている場合は、analysis_versionでフィルタリングしてコメントを削除
-    q_comments = db.query(models.Comment).filter(models.Comment.file_id == uploaded.file_id)
+    q_comments = db.query(models.Comment).filter(
+        models.Comment.file_id == uploaded.file_id
+    )
     if payload.analysis_version in {"final", "preliminary"}:
-        q_comments = q_comments.filter(models.Comment.analysis_version == payload.analysis_version)
+        q_comments = q_comments.filter(
+            models.Comment.analysis_version == payload.analysis_version
+        )
     removed_comments = q_comments.delete(synchronize_session=False) or 0
 
     # バージョン指定の削除でコメントのみが削除された場合はファイルを保持、それ以外はsurvey/metrics/fileも削除

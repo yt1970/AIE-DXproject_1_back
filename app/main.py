@@ -76,5 +76,3 @@ def create_app() -> FastAPI:
 
 # グローバルなアプリケーションインスタンスを作成
 app = create_app()
-
-

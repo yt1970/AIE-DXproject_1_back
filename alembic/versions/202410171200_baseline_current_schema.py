@@ -51,7 +51,9 @@ def upgrade() -> None:
         sa.Column("total_rows", sa.Integer(), nullable=True),
         sa.Column("processed_rows", sa.Integer(), nullable=True),
         sa.Column("task_id", sa.String(length=255), nullable=True),
-        sa.Column("lecture_id", sa.Integer(), sa.ForeignKey("lecture.id"), nullable=True),
+        sa.Column(
+            "lecture_id", sa.Integer(), sa.ForeignKey("lecture.id"), nullable=True
+        ),
         sa.Column("processing_started_at", sa.TIMESTAMP(), nullable=True),
         sa.Column("processing_completed_at", sa.TIMESTAMP(), nullable=True),
         sa.Column("error_message", sa.Text(), nullable=True),
@@ -69,7 +71,9 @@ def upgrade() -> None:
         "survey_batch",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("file_id", sa.Integer(), nullable=False),
-        sa.Column("lecture_id", sa.Integer(), sa.ForeignKey("lecture.id"), nullable=True),
+        sa.Column(
+            "lecture_id", sa.Integer(), sa.ForeignKey("lecture.id"), nullable=True
+        ),
         sa.Column("course_name", sa.String(length=255), nullable=False),
         sa.Column("lecture_date", sa.Date(), nullable=False),
         sa.Column("lecture_number", sa.Integer(), nullable=False),
@@ -104,11 +108,19 @@ def upgrade() -> None:
         sa.Column("account_name", sa.String(length=255), nullable=True),
         sa.Column("score_satisfaction_overall", sa.Integer(), nullable=True),
         sa.Column("score_satisfaction_content_volume", sa.Integer(), nullable=True),
-        sa.Column("score_satisfaction_content_understanding", sa.Integer(), nullable=True),
-        sa.Column("score_satisfaction_content_announcement", sa.Integer(), nullable=True),
+        sa.Column(
+            "score_satisfaction_content_understanding", sa.Integer(), nullable=True
+        ),
+        sa.Column(
+            "score_satisfaction_content_announcement", sa.Integer(), nullable=True
+        ),
         sa.Column("score_satisfaction_instructor_overall", sa.Integer(), nullable=True),
-        sa.Column("score_satisfaction_instructor_efficiency", sa.Integer(), nullable=True),
-        sa.Column("score_satisfaction_instructor_response", sa.Integer(), nullable=True),
+        sa.Column(
+            "score_satisfaction_instructor_efficiency", sa.Integer(), nullable=True
+        ),
+        sa.Column(
+            "score_satisfaction_instructor_response", sa.Integer(), nullable=True
+        ),
         sa.Column("score_satisfaction_instructor_clarity", sa.Integer(), nullable=True),
         sa.Column("score_self_preparation", sa.Integer(), nullable=True),
         sa.Column("score_self_motivation", sa.Integer(), nullable=True),
@@ -184,7 +196,12 @@ def upgrade() -> None:
         "survey_summary",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("survey_batch_id", sa.Integer(), nullable=False),
-        sa.Column("analysis_version", sa.String(length=20), nullable=False, server_default="preliminary"),
+        sa.Column(
+            "analysis_version",
+            sa.String(length=20),
+            nullable=False,
+            server_default="preliminary",
+        ),
         sa.Column("score_overall_satisfaction", sa.Float(), nullable=True),
         sa.Column("score_content_volume", sa.Float(), nullable=True),
         sa.Column("score_content_understanding", sa.Float(), nullable=True),
@@ -218,7 +235,12 @@ def upgrade() -> None:
         "comment_summary",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("survey_batch_id", sa.Integer(), nullable=False),
-        sa.Column("analysis_version", sa.String(length=20), nullable=False, server_default="preliminary"),
+        sa.Column(
+            "analysis_version",
+            sa.String(length=20),
+            nullable=False,
+            server_default="preliminary",
+        ),
         sa.Column("sentiment_positive", sa.Integer(), nullable=True),
         sa.Column("sentiment_negative", sa.Integer(), nullable=True),
         sa.Column("sentiment_neutral", sa.Integer(), nullable=True),
@@ -247,10 +269,14 @@ def downgrade() -> None:
     op.drop_table("survey_summary")
     op.drop_table("lecture_metrics")
     op.drop_index(op.f("ix_response_comment_account_id"), table_name="response_comment")
-    op.drop_index(op.f("ix_response_comment_survey_batch_id"), table_name="response_comment")
+    op.drop_index(
+        op.f("ix_response_comment_survey_batch_id"), table_name="response_comment"
+    )
     op.drop_table("response_comment")
     op.drop_index(op.f("ix_survey_response_account_id"), table_name="survey_response")
-    op.drop_index(op.f("ix_survey_response_survey_batch_id"), table_name="survey_response")
+    op.drop_index(
+        op.f("ix_survey_response_survey_batch_id"), table_name="survey_response"
+    )
     op.drop_table("survey_response")
     op.drop_table("survey_batch")
     op.drop_table("uploaded_file")

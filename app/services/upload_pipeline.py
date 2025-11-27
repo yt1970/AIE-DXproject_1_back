@@ -92,7 +92,7 @@ def analyze_and_store_comments(
         for col_name, attr_name in score_column_map.items():
             if col_name in row and row[col_name] and row[col_name].isdigit():
                 survey_response_data[attr_name] = int(row[col_name])
-        
+
         survey_response_record = models.SurveyResponse(**survey_response_data)
         db.add(survey_response_record)
         # ResponseCommentが参照できるようIDを確定
@@ -122,7 +122,11 @@ def analyze_and_store_comments(
                     "; ".join(analysis_result.warnings),
                 )
 
-            is_important = 1 if analysis_result.importance_level in ("medium", "high") else 0
+            is_important = (
+                1
+                if analysis_result.importance_normalized.value in ("medium", "high")
+                else 0
+            )
 
             comment_to_add = models.ResponseComment(
                 survey_response_id=survey_response_record.id,
@@ -132,14 +136,16 @@ def analyze_and_store_comments(
                 account_name=account_name,
                 question_text=column_name,
                 comment_text=comment_text,
-                llm_category=analysis_result.category,
-                llm_sentiment=analysis_result.sentiment_normalized.value
-                if analysis_result.sentiment_normalized
-                else None,
+                llm_category=analysis_result.category_normalized.value,
+                llm_sentiment=(
+                    analysis_result.sentiment_normalized.value
+                    if analysis_result.sentiment_normalized
+                    else None
+                ),
                 llm_summary=analysis_result.summary,
-                llm_importance_level=analysis_result.importance_level,
+                llm_importance_level=analysis_result.importance_normalized.value,
                 llm_importance_score=analysis_result.importance_score,
-                llm_risk_level=analysis_result.risk_level,
+                llm_risk_level=analysis_result.risk_level_normalized.value,
                 processed_at=datetime.now(UTC),
                 analysis_version="preliminary",
                 is_important=is_important,
@@ -167,22 +173,16 @@ def validate_csv_or_raise(content_bytes: bytes) -> None:
     _prepare_csv_reader(content_bytes, for_validation_only=True)
 
 
-def build_storage_path(
-    metadata: UploadRequestMetadata, filename: str | None
-) -> str:
+def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:
     course = _slugify(metadata.course_name)
     lecture_segment = (
         f"{metadata.lecture_date.isoformat()}-lecture-{metadata.lecture_number}"
     )
     safe_filename = _slugify(filename or "uploaded.csv", allow_period=True)
-    return "/".join(
-        (course, lecture_segment, f"{uuid4().hex}_{safe_filename}")
-    )
+    return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))
 
 
-def _prepare_csv_reader(
-    content_bytes: bytes, *, for_validation_only: bool = False
-):
+def _prepare_csv_reader(content_bytes: bytes, *, for_validation_only: bool = False):
     try:
         content_text = content_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -208,7 +208,9 @@ def _prepare_csv_reader(
         )
 
     analyzable_columns = [
-        name for name in normalized_fieldnames if name.startswith(COMMENT_SAVE_TARGET_PREFIXES)
+        name
+        for name in normalized_fieldnames
+        if name.startswith(COMMENT_SAVE_TARGET_PREFIXES)
     ]
     if not analyzable_columns:
         raise CsvValidationError(

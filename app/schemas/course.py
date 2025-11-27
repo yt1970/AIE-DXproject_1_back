@@ -31,5 +31,3 @@ class LectureCategory(str, Enum):
     講義資料 = "講義資料"
     運営 = "運営"
     その他 = "その他"
-
-

@@ -29,8 +29,29 @@ NEGATIVE_KEYWORDS = (
 # 4分類への正規化用キーワード
 FOUR_CATEGORY_KEYWORDS = {
     "講義資料": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
-    "運営": ("運営", "アナウンス", "連絡", "zoom", "録画", "出欠", "スケジュール", "配信", "会場", "受付"),
-    "講義内容": ("内容", "説明", "構成", "進度", "難易度", "ペース", "事例", "演習", "課題"),
+    "運営": (
+        "運営",
+        "アナウンス",
+        "連絡",
+        "zoom",
+        "録画",
+        "出欠",
+        "スケジュール",
+        "配信",
+        "会場",
+        "受付",
+    ),
+    "講義内容": (
+        "内容",
+        "説明",
+        "構成",
+        "進度",
+        "難易度",
+        "ペース",
+        "事例",
+        "演習",
+        "課題",
+    ),
 }
 
 
@@ -68,7 +89,7 @@ def _determine_category(comment_text: str, llm_output: LLMAnalysisResult) -> str
     if normalized_from_text:
         return normalized_from_text
 
-    return "その他"
+    return "other"
 
 
 def _determine_sentiment(comment_text: str, llm_output: LLMAnalysisResult) -> str:
@@ -79,10 +100,10 @@ def _determine_sentiment(comment_text: str, llm_output: LLMAnalysisResult) -> st
     negative_score = _count_occurrences(comment_text, NEGATIVE_KEYWORDS)
 
     if positive_score > negative_score:
-        return "ポジティブ"
+        return "positive"
     if negative_score > positive_score:
-        return "ネガティブ"
-    return "ニュートラル"
+        return "negative"
+    return "neutral"
 
 
 def _count_occurrences(text: str, keywords: Tuple[str, ...]) -> int:

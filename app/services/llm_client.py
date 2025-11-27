@@ -35,6 +35,7 @@ PROMPT_TEMPLATE_BASE = """
 {instructions}
 """
 
+
 # 例外定義
 class LLMClientError(Exception):
     """LLMクライアント共通例外。"""
@@ -150,9 +151,14 @@ class LLMClient:
                 mock_payload = {"risk_level": "none", "is_safe": True}
             else:  # full_analysis or unknown
                 mock_payload = {
-                    "category": "その他", "sentiment": "neutral", "importance_level": "low",
-                    "importance_score": 0.1, "risk_level": "none", "is_safe": True,
-                    "summary": comment_text[:50], "tags": [],
+                    "category": "その他",
+                    "sentiment": "neutral",
+                    "importance_level": "low",
+                    "importance_score": 0.1,
+                    "risk_level": "none",
+                    "is_safe": True,
+                    "summary": comment_text[:50],
+                    "tags": [],
                 }
             # 実応答にはraw/warningsが無いので呼び出し側で補完する
             return LLMAnalysisResult.model_validate(mock_payload)
@@ -229,7 +235,9 @@ class LLMClient:
         question_text_str = question_text or "（指定なし）"
 
         all_prompts = load_prompts()
-        instructions = all_prompts.get(analysis_type) or all_prompts.get("full_analysis", "")
+        instructions = all_prompts.get(analysis_type) or all_prompts.get(
+            "full_analysis", ""
+        )
 
         final_prompt = PROMPT_TEMPLATE_BASE.format(
             course_name=course_name_str,

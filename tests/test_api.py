@@ -21,7 +21,9 @@ from app.services.storage import clear_storage_client_cache
 
 
 @pytest.fixture(name="client")
-def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
+def fixture_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Generator[TestClient, None, None]:
     """テスト用のクライアントを作成（データベースセットアップ済み）"""
     db_path = tmp_path / "test.sqlite3"
     uploads_dir = tmp_path / "uploads"
@@ -76,6 +78,7 @@ def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator
 # ヘルパー関数
 # ============================================================================
 
+
 def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> int:
     """テスト用のアップロードを実行し、file_idを返す"""
     metadata = {
@@ -108,6 +111,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
 # 基本動作確認テスト
 # ============================================================================
 
+
 def test_health_endpoint(client: TestClient):
     """ヘルスチェックエンドポイントの動作確認"""
     response = client.get("/health")
@@ -127,7 +131,9 @@ def test_courses_list_endpoint(client: TestClient):
 
 def test_courses_list_with_params(client: TestClient):
     """コース一覧エンドポイントのパラメータ付きリクエスト"""
-    response = client.get("/api/v1/courses", params={"name": "test", "sort_by": "course_name"})
+    response = client.get(
+        "/api/v1/courses", params={"name": "test", "sort_by": "course_name"}
+    )
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
@@ -229,7 +235,7 @@ def test_api_routes_registered(client: TestClient):
     assert response.status_code == 200
     openapi_schema = response.json()
     paths = openapi_schema.get("paths", {})
-    
+
     # 主要なエンドポイントが存在することを確認
     expected_paths = [
         "/health",
@@ -237,7 +243,7 @@ def test_api_routes_registered(client: TestClient):
         "/api/v1/lectures",
         "/api/v1/uploads/check-duplicate",
     ]
-    
+
     for path in expected_paths:
         assert path in paths, f"Path {path} not found in OpenAPI schema"
 
@@ -245,6 +251,7 @@ def test_api_routes_registered(client: TestClient):
 # ============================================================================
 # 統合テスト
 # ============================================================================
+
 
 def test_courses_list_returns_distinct_sorted(client: TestClient) -> None:
     """コース一覧が重複なく、ソートされて返ることを確認"""
@@ -306,7 +313,9 @@ def test_finalize_and_version_filter(client: TestClient) -> None:
     assert payload["final_count"] > 0
 
     # comments with version filter
-    resp2 = client.get(f"/api/v1/courses/Version Course/comments", params={"version": "final"})
+    resp2 = client.get(
+        f"/api/v1/courses/Version Course/comments", params={"version": "final"}
+    )
     assert resp2.status_code == 200
     comments = resp2.json()
     assert len(comments) > 0
@@ -334,9 +343,7 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
 
         # 現在の件数を控える
         cnt_comments = (
-            db.query(models.Comment)
-            .filter(models.Comment.file_id == file_id)
-            .count()
+            db.query(models.Comment).filter(models.Comment.file_id == file_id).count()
         )
         cnt_surveys = (
             db.query(models.SurveyResponse)

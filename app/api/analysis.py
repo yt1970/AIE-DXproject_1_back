@@ -21,7 +21,9 @@ def get_analysis_status(
     )
 
     if not uploaded_file:
-        raise HTTPException(status_code=404, detail=f"ファイルID {file_id} が見つかりません")
+        raise HTTPException(
+            status_code=404, detail=f"ファイルID {file_id} が見つかりません"
+        )
 
     processed_count = uploaded_file.processed_rows
     if processed_count is None:

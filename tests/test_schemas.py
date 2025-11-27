@@ -97,4 +97,3 @@ def test_lecture_metrics_response_extends_payload() -> None:
     assert response.file_id == 99
     assert response.zoom_participants == 120
     assert response.updated_at == datetime(2024, 5, 1, 12, 30)
-

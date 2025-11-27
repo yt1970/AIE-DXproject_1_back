@@ -56,7 +56,9 @@ def list_lectures(
     return [
         LectureInfo(
             course_name=lec.course_name,
-            academic_year=(str(lec.academic_year) if lec.academic_year is not None else None),
+            academic_year=(
+                str(lec.academic_year) if lec.academic_year is not None else None
+            ),
             period=lec.period,
         )
         for lec in lectures
@@ -67,12 +69,26 @@ def list_lectures(
 def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
     """フォームのドロップダウン用のメタデータを返す。コース、年度、期間を含む。"""
     # 講義テーブルから取得
-    courses = [row[0] for row in db.query(models.Lecture.course_name).distinct().all() if row[0]]
-    years = [row[0] for row in db.query(models.Lecture.academic_year).distinct().all() if row[0] is not None]
-    terms = [row[0] for row in db.query(models.Lecture.period).distinct().all() if row[0]]
+    courses = [
+        row[0]
+        for row in db.query(models.Lecture.course_name).distinct().all()
+        if row[0]
+    ]
+    years = [
+        row[0]
+        for row in db.query(models.Lecture.academic_year).distinct().all()
+        if row[0] is not None
+    ]
+    terms = [
+        row[0] for row in db.query(models.Lecture.period).distinct().all() if row[0]
+    ]
 
     if not courses:
-        courses = [row[0] for row in db.query(models.UploadedFile.course_name).distinct().all() if row[0]]
+        courses = [
+            row[0]
+            for row in db.query(models.UploadedFile.course_name).distinct().all()
+            if row[0]
+        ]
     if not years:
         years = [
             row[0]
@@ -88,7 +104,9 @@ def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/lectures", response_model=LectureInfo)
-def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> LectureInfo:
+def create_lecture(
+    payload: LectureCreate, db: Session = Depends(get_db)
+) -> LectureInfo:
     """講義を作成する。コース名、年度、期間の組み合わせで重複を拒否する。"""
     course_name = _normalize_text(payload.course_name)
     period = _normalize_text(payload.period)
@@ -119,7 +137,9 @@ def create_lecture(payload: LectureCreate, db: Session = Depends(get_db)) -> Lec
     db.commit()
     db.refresh(lec)
     return LectureInfo(
-        course_name=lec.course_name, academic_year=str(lec.academic_year), period=lec.period
+        course_name=lec.course_name,
+        academic_year=str(lec.academic_year),
+        period=lec.period,
     )
 
 
@@ -164,8 +184,11 @@ def update_lecture(
     db.commit()
     db.refresh(lec)
     return LectureInfo(
-        course_name=lec.course_name, academic_year=str(lec.academic_year), period=lec.period
+        course_name=lec.course_name,
+        academic_year=str(lec.academic_year),
+        period=lec.period,
     )
+
 
 @router.delete("/lectures/{lecture_id}")
 def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
@@ -173,12 +196,19 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
         raise HTTPException(status_code=404, detail="講義が見つかりません")
-    files = db.query(models.UploadedFile).filter(models.UploadedFile.lecture_id == lecture_id).all()
+    files = (
+        db.query(models.UploadedFile)
+        .filter(models.UploadedFile.lecture_id == lecture_id)
+        .all()
+    )
     # 処理中のファイルがある場合は削除をブロック
     if any(f.status == "PROCESSING" for f in files):
-        raise HTTPException(status_code=409, detail="一部のアップロードが現在処理中です")
+        raise HTTPException(
+            status_code=409, detail="一部のアップロードが現在処理中です"
+        )
     # ファイルごとに関連レコードを削除
     from app.services import get_storage_client
+
     storage = get_storage_client()
     removed_comments = 0
     removed_survey_responses = 0
@@ -191,17 +221,30 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
         except Exception:
             pass
         removed_comments += (
-            db.query(models.Comment).filter(models.Comment.file_id == f.file_id).delete(synchronize_session=False) or 0
+            db.query(models.Comment)
+            .filter(models.Comment.file_id == f.file_id)
+            .delete(synchronize_session=False)
+            or 0
         )
         removed_survey_responses += (
-            db.query(models.SurveyResponse).filter(models.SurveyResponse.file_id == f.file_id).delete(synchronize_session=False) or 0
+            db.query(models.SurveyResponse)
+            .filter(models.SurveyResponse.file_id == f.file_id)
+            .delete(synchronize_session=False)
+            or 0
         )
         removed_metrics += (
-            db.query(models.LectureMetrics).filter(models.LectureMetrics.file_id == f.file_id).delete(synchronize_session=False) or 0
+            db.query(models.LectureMetrics)
+            .filter(models.LectureMetrics.file_id == f.file_id)
+            .delete(synchronize_session=False)
+            or 0
         )
-        db.query(models.UploadedFile).filter(models.UploadedFile.file_id == f.file_id).delete(synchronize_session=False)
+        db.query(models.UploadedFile).filter(
+            models.UploadedFile.file_id == f.file_id
+        ).delete(synchronize_session=False)
     # 最後に講義を削除
-    db.query(models.Lecture).filter(models.Lecture.id == lecture_id).delete(synchronize_session=False)
+    db.query(models.Lecture).filter(models.Lecture.id == lecture_id).delete(
+        synchronize_session=False
+    )
     db.commit()
     return {
         "lecture_id": lecture_id,
