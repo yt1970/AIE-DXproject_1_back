@@ -15,6 +15,11 @@ def determine_importance_score(llm_output: LLMAnalysisResult) -> float:
         重要度スコア (0.0 ~ 1.0)
     """
     if llm_output.importance_score is not None:
-        score = float(llm_output.importance_score)
-        return max(0.0, min(1.0, score))
+        # Scoreの算出は、high: 1.0, medium: 0.5, low: 0.0とする。
+        if llm_output.importance_level == "high":
+            return 1.0
+        elif llm_output.importance_level == "medium":
+            return 0.5
+        elif llm_output.importance_level == "low":
+            return 0.0
     return 0.0

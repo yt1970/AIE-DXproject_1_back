@@ -134,16 +134,16 @@ def analyze_and_store_comments(
                 account_name=account_name,
                 question_text=column_name,
                 comment_text=comment_text,
-                llm_category=analysis_result.category,
+                llm_category=analysis_result.category_normalized.value,
                 llm_sentiment=(
                     analysis_result.sentiment_normalized.value
                     if analysis_result.sentiment_normalized
                     else None
                 ),
                 llm_summary=analysis_result.summary,
-                llm_importance_level=analysis_result.importance_level,
+                llm_importance_level=analysis_result.importance_normalized.value,
                 llm_importance_score=analysis_result.importance_score,
-                llm_risk_level=analysis_result.risk_level,
+                llm_risk_level=analysis_result.risk_level_normalized.value,
                 processed_at=datetime.now(UTC),
                 analysis_version="preliminary",
                 is_important=is_important,

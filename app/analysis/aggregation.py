@@ -89,7 +89,7 @@ def _determine_category(comment_text: str, llm_output: LLMAnalysisResult) -> str
     if normalized_from_text:
         return normalized_from_text
 
-    return "その他"
+    return "other"
 
 
 def _determine_sentiment(comment_text: str, llm_output: LLMAnalysisResult) -> str:
@@ -100,10 +100,10 @@ def _determine_sentiment(comment_text: str, llm_output: LLMAnalysisResult) -> st
     negative_score = _count_occurrences(comment_text, NEGATIVE_KEYWORDS)
 
     if positive_score > negative_score:
-        return "ポジティブ"
+        return "positive"
     if negative_score > positive_score:
-        return "ネガティブ"
-    return "ニュートラル"
+        return "negative"
+    return "neutral"
 
 
 def _count_occurrences(text: str, keywords: Tuple[str, ...]) -> int:

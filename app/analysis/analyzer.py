@@ -19,16 +19,16 @@ class CommentAnalysisResult:
         self,
         is_improvement_needed: bool,
         is_slanderous: bool,
-        sentiment: str,
         sentiment_normalized: SentimentType,
+        sentiment: str,
+        risk_level_normalized: RiskLevelType,
+        risk_level: str,
+        category_normalized: CategoryType,
+        category: str,
+        importance_normalized: ImportanceType,
+        importance_level: str,
         *,
         llm_result: llm_analyzer.LLMAnalysisResult,
-        risk_level: str,
-        risk_level_normalized: RiskLevelType,
-        category: str,
-        category_normalized: CategoryType,
-        importance: str,
-        importance_normalized: ImportanceType,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
@@ -37,17 +37,34 @@ class CommentAnalysisResult:
         self.sentiment_normalized = sentiment_normalized
 
         # LLM分析結果の詳細情報
-        self.category = category
         self.category_normalized = category_normalized
+        self.category = llm_result.category
         self.summary = llm_result.summary
+        self.importance_level_normalized = importance_level_normalized
         self.importance_level = llm_result.importance_level
         self.importance_score = llm_result.importance_score
-        self.risk_level = risk_level
         self.risk_level_normalized = risk_level_normalized
+        self.risk_level = llm_result.risk_level
 
         # デバッグやログ用の追加情報
         self.warnings = llm_result.warnings
         self.raw_llm = llm_result.raw
+
+    @property
+    def sentiment(self) -> str:
+        return self.sentiment_normalized.value
+
+    @property
+    def category(self) -> str:
+        return self.category_normalized.value
+
+    @property
+    def importance(self) -> str:
+        return self.importance_normalized.value
+
+    @property
+    def risk_level(self) -> str:
+        return self.risk_level_normalized.value
 
     def __repr__(self) -> str:
         return (
@@ -116,26 +133,23 @@ def analyze_comment(
 
     # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
     is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
-
+    
+    # LLMの処理が走らなかった場合の処理を行っている。キーワード一致での予測を行っている。
     category_guess, sentiment_guess = aggregation.classify_comment(
         comment_text, llm_structured
     )
 
     sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
-    sentiment_label = SENTIMENT_DISPLAY[sentiment_enum]
     category_enum = _normalize_category(llm_structured.category or category_guess)
-    category_label = CATEGORY_DISPLAY[category_enum]
     importance_enum = _normalize_importance(llm_structured.importance_level)
-    importance_label = IMPORTANCE_DISPLAY[importance_enum]
     risk_level_enum = _normalize_risk_level(llm_structured.risk_level)
-    risk_level_label = RISK_LEVEL_DISPLAY[risk_level_enum]
 
     # 最終的な結果を構築
     llm_structured.importance_score = final_importance_score
-    llm_structured.risk_level = risk_level_label
-    llm_structured.category = category_label
-    llm_structured.importance_level = importance_label
-    llm_structured.sentiment = sentiment_label
+    llm_structured.risk_level = risk_level_enum.value
+    llm_structured.category = category_enum.value
+    llm_structured.importance_level = importance_enum.value
+    llm_structured.sentiment = sentiment_enum.value
     llm_structured.sentiment_normalized = sentiment_enum
     llm_structured.category_normalized = category_enum
     llm_structured.importance_normalized = importance_enum
@@ -145,13 +159,9 @@ def analyze_comment(
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
         is_slanderous=is_slanderous,
-        sentiment=sentiment_label,
         sentiment_normalized=sentiment_enum,
-        category=category_label,
         category_normalized=category_enum,
-        importance=importance_label,
         importance_normalized=importance_enum,
-        risk_level=risk_level_label,
         risk_level_normalized=risk_level_enum,
         llm_result=llm_structured,
     )
