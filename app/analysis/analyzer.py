@@ -186,9 +186,9 @@ SENTIMENT_ALIASES = {
 }
 
 SENTIMENT_DISPLAY = {
-    SentimentType.positive: "ポジティブ",
-    SentimentType.negative: "ネガティブ",
-    SentimentType.neutral: "ニュートラル",
+    SentimentType.positive: "positive",
+    SentimentType.negative: "negative",
+    SentimentType.neutral: "neutral",
 }
 
 
@@ -250,18 +250,16 @@ def _normalize_category(raw_value: str | None) -> CategoryType:
 
 IMPORTANCE_ALIASES = {
     "high": ImportanceType.high,
-    "高": ImportanceType.high,
     "medium": ImportanceType.medium,
-    "中": ImportanceType.medium,
     "low": ImportanceType.low,
-    "低": ImportanceType.low,
+    "other": ImportanceType.other,
 }
 
 IMPORTANCE_DISPLAY = {
-    ImportanceType.high: "高",
-    ImportanceType.medium: "中",
-    ImportanceType.low: "低",
-    ImportanceType.other: "その他",
+    ImportanceType.high: "high",
+    ImportanceType.medium: "medium",
+    ImportanceType.low: "low",
+    ImportanceType.other: "other",
 }
 
 
@@ -286,15 +284,14 @@ def _normalize_importance(raw_value: str | None) -> ImportanceType:
 
 RISK_LEVEL_ALIASES = {
     "flag": RiskLevelType.flag,
-    "危険": RiskLevelType.flag,
     "safe": RiskLevelType.safe,
-    "安全": RiskLevelType.safe,
+    "other": RiskLevelType.other,
 }
 
 RISK_LEVEL_DISPLAY = {
-    RiskLevelType.flag: "危険",
-    RiskLevelType.safe: "安全",
-    RiskLevelType.other: "その他",
+    RiskLevelType.flag: "flag",
+    RiskLevelType.safe: "safe",
+    RiskLevelType.other: "other",
 }
 
 
