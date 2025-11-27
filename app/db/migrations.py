@@ -152,7 +152,7 @@ def _apply_statements(engine: Engine, statements: List[str], *, table: str) -> N
 def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     """不足カラム向けのALTER TABLE文を生成する。"""
     statements: List[str] = []
-    
+
     if "account_id" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN account_id VARCHAR(255)")
 
@@ -190,7 +190,7 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
 def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
     """survey_response向けALTER TABLE文を生成する。"""
     statements: List[str] = []
-    
+
     if "survey_batch_id" not in existing_columns:
         statements.append(
             "ALTER TABLE survey_response ADD COLUMN survey_batch_id INTEGER REFERENCES survey_batch(id)"
@@ -216,7 +216,9 @@ def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
 
     for col, col_type in new_score_columns.items():
         if col not in existing_columns:
-            statements.append(f"ALTER TABLE survey_response ADD COLUMN {col} {col_type}")
+            statements.append(
+                f"ALTER TABLE survey_response ADD COLUMN {col} {col_type}"
+            )
 
     return statements
 
@@ -226,9 +228,13 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
 
     # 旧commentテーブル由来のカラムが改名後に不足している可能性を考慮する
     if "account_id" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN account_id VARCHAR(255)")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN account_id VARCHAR(255)"
+        )
     if "account_name" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN account_name VARCHAR(255)")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN account_name VARCHAR(255)"
+        )
     if "question_text" not in existing_columns:
         statements.append("ALTER TABLE response_comment ADD COLUMN question_text TEXT")
     if "survey_response_id" not in existing_columns:
@@ -242,18 +248,26 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
             "ALTER TABLE response_comment ADD COLUMN llm_importance_level VARCHAR(20)"
         )
     if "llm_importance_score" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN llm_importance_score FLOAT")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN llm_importance_score FLOAT"
+        )
     if "llm_risk_level" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN llm_risk_level VARCHAR(20)")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN llm_risk_level VARCHAR(20)"
+        )
     if "analysis_version" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN analysis_version VARCHAR(20)")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN analysis_version VARCHAR(20)"
+        )
 
     if "survey_batch_id" not in existing_columns:
         statements.append(
             "ALTER TABLE response_comment ADD COLUMN survey_batch_id INTEGER REFERENCES survey_batch(id)"
         )
     if "is_important" not in existing_columns:
-        statements.append("ALTER TABLE response_comment ADD COLUMN is_important INTEGER")
+        statements.append(
+            "ALTER TABLE response_comment ADD COLUMN is_important INTEGER"
+        )
 
     return statements
 
@@ -287,7 +301,9 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
         )
 
     if "academic_year" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_file ADD COLUMN academic_year VARCHAR(10)")
+        statements.append(
+            "ALTER TABLE uploaded_file ADD COLUMN academic_year VARCHAR(10)"
+        )
 
     if "period" not in existing_columns:
         statements.append("ALTER TABLE uploaded_file ADD COLUMN period VARCHAR(100)")
@@ -298,7 +314,9 @@ def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
 def _build_comment_summary_migrations(existing_columns: Set[str]) -> List[str]:
     statements: List[str] = []
     if "comments_count" not in existing_columns:
-        statements.append("ALTER TABLE comment_summary ADD COLUMN comments_count INTEGER")
+        statements.append(
+            "ALTER TABLE comment_summary ADD COLUMN comments_count INTEGER"
+        )
     return statements
 
 
@@ -375,7 +393,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
                     "llm_importance_score",
                     "llm_risk_level",
                     "processed_at",
-                "analysis_version",
+                    "analysis_version",
                 ],
                 select_stmt,
             )
@@ -399,8 +417,9 @@ def _drop_student_table(engine: Engine) -> None:
 def _create_lecture_metrics_table(engine: Engine) -> None:
     with engine.begin() as connection:
         logger.info("Creating table 'lecture_metrics'.")
-        connection.execute(text(
-            """
+        connection.execute(
+            text(
+                """
             CREATE TABLE lecture_metrics (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_file(file_id),
@@ -409,14 +428,16 @@ def _create_lecture_metrics_table(engine: Engine) -> None:
                 updated_at TIMESTAMP
             )
             """
-        ))
+            )
+        )
 
 
 def _create_lecture_table(engine: Engine) -> None:
     with engine.begin() as connection:
         logger.info("Creating table 'lecture'.")
-        connection.execute(text(
-            """
+        connection.execute(
+            text(
+                """
             CREATE TABLE lecture (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 course_name VARCHAR(255) NOT NULL,
@@ -426,7 +447,8 @@ def _create_lecture_table(engine: Engine) -> None:
                 CONSTRAINT uq_lecture_identity UNIQUE (course_name, academic_year, period)
             )
             """
-        ))
+            )
+        )
 
 
 def _rename_comment_table(engine: Engine) -> None:
@@ -438,8 +460,9 @@ def _rename_comment_table(engine: Engine) -> None:
 def _create_survey_batch_table(engine: Engine) -> None:
     with engine.begin() as connection:
         logger.info("Creating table 'survey_batch'.")
-        connection.execute(text(
-            """
+        connection.execute(
+            text(
+                """
             CREATE TABLE survey_batch (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_file(file_id),
@@ -460,14 +483,16 @@ def _create_survey_batch_table(engine: Engine) -> None:
                 CONSTRAINT uq_survey_batch_identity UNIQUE (course_name, lecture_date, lecture_number)
             )
             """
-        ))
+            )
+        )
 
 
 def _create_survey_summary_table(engine: Engine) -> None:
     with engine.begin() as connection:
         logger.info("Creating table 'survey_summary'.")
-        connection.execute(text(
-            """
+        connection.execute(
+            text(
+                """
             CREATE TABLE survey_summary (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 survey_batch_id INTEGER NOT NULL REFERENCES survey_batch(id),
@@ -495,14 +520,16 @@ def _create_survey_summary_table(engine: Engine) -> None:
                 CONSTRAINT uq_survey_summary_batch_version UNIQUE (survey_batch_id, analysis_version)
             )
             """
-        ))
+            )
+        )
 
 
 def _create_comment_summary_table(engine: Engine) -> None:
     with engine.begin() as connection:
         logger.info("Creating table 'comment_summary'.")
-        connection.execute(text(
-            """
+        connection.execute(
+            text(
+                """
             CREATE TABLE comment_summary (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 survey_batch_id INTEGER NOT NULL REFERENCES survey_batch(id),
@@ -523,4 +550,5 @@ def _create_comment_summary_table(engine: Engine) -> None:
                 CONSTRAINT uq_comment_summary_batch_version UNIQUE (survey_batch_id, analysis_version)
             )
             """
-        ))
+            )
+        )

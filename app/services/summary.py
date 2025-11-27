@@ -64,7 +64,9 @@ def compute_and_upsert_summaries(
     _populate_comment_summary(db, comment_summary, survey_batch.id, version)
     # サマリー間でカウントを揃える
     survey_summary.comments_count = comment_summary.comments_count or 0
-    survey_summary.important_comments_count = comment_summary.important_comments_count or 0
+    survey_summary.important_comments_count = (
+        comment_summary.important_comments_count or 0
+    )
 
     now = datetime.now(UTC)
     survey_summary.updated_at = now
@@ -95,10 +97,14 @@ def _populate_survey_summary(
         "score_self_future": models.SurveyResponse.score_self_applicability,
     }
 
-    aggregates = db.query(
-        *[func.avg(col) for col in score_fields.values()],
-        func.count(models.SurveyResponse.id),
-    ).filter(models.SurveyResponse.survey_batch_id == survey_batch_id).one()
+    aggregates = (
+        db.query(
+            *[func.avg(col) for col in score_fields.values()],
+            func.count(models.SurveyResponse.id),
+        )
+        .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
+        .one()
+    )
 
     for (field_name, _), value in zip(score_fields.items(), aggregates):
         setattr(summary, field_name, _maybe_round(value))
@@ -137,39 +143,45 @@ def _populate_comment_summary(
     aggregates = (
         db.query(
             func.count(1).label("total_comments"),
-            func.sum(
-                case((rc.llm_sentiment == "positive", 1), else_=0)
-            ).label("sentiment_positive"),
-            func.sum(
-                case((rc.llm_sentiment == "negative", 1), else_=0)
-            ).label("sentiment_negative"),
+            func.sum(case((rc.llm_sentiment == "positive", 1), else_=0)).label(
+                "sentiment_positive"
+            ),
+            func.sum(case((rc.llm_sentiment == "negative", 1), else_=0)).label(
+                "sentiment_negative"
+            ),
             func.sum(
                 case(
                     (or_(rc.llm_sentiment == "neutral", rc.llm_sentiment.is_(None)), 1),
                     else_=0,
                 )
             ).label("sentiment_neutral"),
-            func.sum(
-                case((rc.llm_category == "講義内容", 1), else_=0)
-            ).label("category_lecture_content"),
-            func.sum(
-                case((rc.llm_category == "講義資料", 1), else_=0)
-            ).label("category_lecture_material"),
-            func.sum(
-                case((rc.llm_category == "運営", 1), else_=0)
-            ).label("category_operations"),
+            func.sum(case((rc.llm_category == "講義内容", 1), else_=0)).label(
+                "category_lecture_content"
+            ),
+            func.sum(case((rc.llm_category == "講義資料", 1), else_=0)).label(
+                "category_lecture_material"
+            ),
+            func.sum(case((rc.llm_category == "運営", 1), else_=0)).label(
+                "category_operations"
+            ),
             func.sum(
                 case(
-                    (or_(rc.llm_importance_level == "low", rc.llm_importance_level.is_(None)), 1),
+                    (
+                        or_(
+                            rc.llm_importance_level == "low",
+                            rc.llm_importance_level.is_(None),
+                        ),
+                        1,
+                    ),
                     else_=0,
                 )
             ).label("importance_low"),
-            func.sum(
-                case((rc.llm_importance_level == "medium", 1), else_=0)
-            ).label("importance_medium"),
-            func.sum(
-                case((rc.llm_importance_level == "high", 1), else_=0)
-            ).label("importance_high"),
+            func.sum(case((rc.llm_importance_level == "medium", 1), else_=0)).label(
+                "importance_medium"
+            ),
+            func.sum(case((rc.llm_importance_level == "high", 1), else_=0)).label(
+                "importance_high"
+            ),
         )
         .filter(*filters)
         .one()
@@ -194,7 +206,9 @@ def _populate_comment_summary(
     summary.importance_low = int(aggregates.importance_low or 0)
     summary.importance_medium = int(aggregates.importance_medium or 0)
     summary.importance_high = int(aggregates.importance_high or 0)
-    summary.important_comments_count = summary.importance_medium + summary.importance_high
+    summary.important_comments_count = (
+        summary.importance_medium + summary.importance_high
+    )
     summary.comments_count = total_comments
 
 

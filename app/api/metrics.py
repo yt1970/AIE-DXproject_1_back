@@ -74,6 +74,7 @@ def upsert_metrics(
         updated_at=metrics.updated_at,
     )
 
+
 def _choose_target_file_for_lecture(db: Session, lecture_id: int) -> int | None:
     """Pick finalized file for lecture or fallback to latest upload in one query."""
     row = (

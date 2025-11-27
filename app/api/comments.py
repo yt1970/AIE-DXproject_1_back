@@ -13,9 +13,8 @@ logger = logging.getLogger(__name__)
 
 
 @router.get(
-    "/courses/{course_name}/comments",
-    response_model=List[CommentAnalysisSchema]
-    )
+    "/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema]
+)
 def get_course_comments(
     course_name: str,
     limit: int = 100,
@@ -26,7 +25,7 @@ def get_course_comments(
     """講義名単位で最新のコメント分析結果を取得する。"""
     query = (
         db.query(models.Comment)
-        .join(models.UploadedFile, models.Comment.file_id == models.UploadedFile.file_id)
+        .join(models.Comment.uploaded_file)
         .outerjoin(models.Comment.survey_response)
         .filter(models.UploadedFile.course_name == course_name)
         .options(

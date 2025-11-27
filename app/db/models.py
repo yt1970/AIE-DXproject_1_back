@@ -25,14 +25,31 @@ class SentimentType(enum.Enum):
     neutral = "neutral"
 
 
-class CommentType(enum.Enum):
-    """コメントのカテゴリEnum型。"""
+class ImportanceType(enum.Enum):
+    """重要度のEnum型。"""
 
-    general = "general"
-    question = "question"
-    complaint = "complaint"
-    praise = "praise"
+    high = "high"
+    medium = "medium"
+    low = "low"
     other = "other"
+
+
+class RiskLevelType(enum.Enum):
+    """リスクレベルのEnum型。"""
+
+    flag = "Flag"
+    safe = "Safe"
+    other = "Other"
+
+
+class CategoryType(enum.Enum):
+    """カテゴリのEnum型。"""
+
+    instructor = "講師"
+    content = "講義内容"
+    material = "講義資料"
+    operation = "運営"
+    other = "その他"
 
 
 class UploadedFile(Base):
@@ -79,12 +96,8 @@ class UploadedFile(Base):
     survey_batch = relationship(
         "SurveyBatch", uselist=False, back_populates="uploaded_file"
     )
-    survey_responses = relationship(
-        "SurveyResponse", back_populates="uploaded_file"
-    )
-    response_comments = relationship(
-        "ResponseComment", back_populates="uploaded_file"
-    )
+    survey_responses = relationship("SurveyResponse", back_populates="uploaded_file")
+    response_comments = relationship("ResponseComment", back_populates="uploaded_file")
     metrics = relationship(
         "LectureMetrics", uselist=False, back_populates="uploaded_file"
     )
@@ -131,12 +144,8 @@ class SurveyBatch(Base):
     )
 
     uploaded_file = relationship("UploadedFile", back_populates="survey_batch")
-    survey_responses = relationship(
-        "SurveyResponse", back_populates="survey_batch"
-    )
-    response_comments = relationship(
-        "ResponseComment", back_populates="survey_batch"
-    )
+    survey_responses = relationship("SurveyResponse", back_populates="survey_batch")
+    response_comments = relationship("ResponseComment", back_populates="survey_batch")
     survey_summary = relationship(
         "SurveySummary", uselist=False, back_populates="survey_batch"
     )
@@ -195,7 +204,7 @@ class ResponseComment(Base):
     survey_response_id = Column(
         Integer, ForeignKey("survey_response.id"), nullable=True
     )
-    
+
     # ユーザー情報と質問事項
     account_id = Column(String(255), index=True)
     account_name = Column(String(255))
@@ -212,7 +221,7 @@ class ResponseComment(Base):
     llm_risk_level = Column(String(20))
     processed_at = Column(TIMESTAMP)  # LLM処理完了日時
     analysis_version = Column(String(20))  # 'preliminary' or 'final'
-    is_important = Column(Integer)  # 重要度判定から導かれる0か1のフラグ
+    is_important = Column(Integer)
 
     # リレーションの定義
     uploaded_file = relationship("UploadedFile", back_populates="response_comments")
@@ -247,7 +256,9 @@ class Lecture(Base):
     category = Column(String(20))  # 講義内容/講義資料/運営/その他
 
     __table_args__ = (
-        UniqueConstraint("course_name", "academic_year", "period", name="uq_lecture_identity"),
+        UniqueConstraint(
+            "course_name", "academic_year", "period", name="uq_lecture_identity"
+        ),
     )
 
 
@@ -255,9 +266,7 @@ class SurveySummary(Base):
     __tablename__ = "survey_summary"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    survey_batch_id = Column(
-        Integer, ForeignKey("survey_batch.id"), nullable=False
-    )
+    survey_batch_id = Column(Integer, ForeignKey("survey_batch.id"), nullable=False)
     analysis_version = Column(String(20), nullable=False, default="preliminary")
 
     # 平均スコア
@@ -288,7 +297,11 @@ class SurveySummary(Base):
     survey_batch = relationship("SurveyBatch", back_populates="survey_summary")
 
     __table_args__ = (
-        UniqueConstraint("survey_batch_id", "analysis_version", name="uq_survey_summary_batch_version"),
+        UniqueConstraint(
+            "survey_batch_id",
+            "analysis_version",
+            name="uq_survey_summary_batch_version",
+        ),
     )
 
 
@@ -296,9 +309,7 @@ class CommentSummary(Base):
     __tablename__ = "comment_summary"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    survey_batch_id = Column(
-        Integer, ForeignKey("survey_batch.id"), nullable=False
-    )
+    survey_batch_id = Column(Integer, ForeignKey("survey_batch.id"), nullable=False)
     analysis_version = Column(String(20), nullable=False, default="preliminary")
 
     sentiment_positive = Column(Integer)
@@ -320,7 +331,11 @@ class CommentSummary(Base):
     survey_batch = relationship("SurveyBatch", back_populates="comment_summary")
 
     __table_args__ = (
-        UniqueConstraint("survey_batch_id", "analysis_version", name="uq_comment_summary_batch_version"),
+        UniqueConstraint(
+            "survey_batch_id",
+            "analysis_version",
+            name="uq_comment_summary_batch_version",
+        ),
     )
 
 

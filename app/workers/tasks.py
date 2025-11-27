@@ -83,11 +83,13 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
             survey_batch.error_message = None
             session.add(survey_batch)
 
-        total_comments, processed_comments, total_responses = analyze_and_store_comments(
-            db=session,
-            file_record=file_record,
-            survey_batch=survey_batch,
-            content_bytes=content_bytes,
+        total_comments, processed_comments, total_responses = (
+            analyze_and_store_comments(
+                db=session,
+                file_record=file_record,
+                survey_batch=survey_batch,
+                content_bytes=content_bytes,
+            )
         )
 
         # 挿入済みのコメント/回答を先に確定させ、後続の重い集計でのロールバックを避ける
@@ -129,7 +131,9 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
     except CsvValidationError as exc:
         session.rollback()
         logger.exception("Background processing failed for file_id=%s", file_id)
-        _mark_failure(session, file_record, survey_batch=survey_batch, error_message=str(exc))
+        _mark_failure(
+            session, file_record, survey_batch=survey_batch, error_message=str(exc)
+        )
         raise
     except StorageError as exc:
         session.rollback()
@@ -147,13 +151,17 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
             exc,
         )
         if max_retries is not None and retries >= max_retries:
-            _mark_failure(session, file_record, survey_batch=survey_batch, error_message=str(exc))
+            _mark_failure(
+                session, file_record, survey_batch=survey_batch, error_message=str(exc)
+            )
             raise
         raise self.retry(exc=exc)
     except Exception as exc:  # pragma: no cover - unexpected failures
         session.rollback()
         logger.exception("Unexpected failure during background processing.")
-        _mark_failure(session, file_record, survey_batch=survey_batch, error_message=str(exc))
+        _mark_failure(
+            session, file_record, survey_batch=survey_batch, error_message=str(exc)
+        )
         raise
     finally:
         session.close()
@@ -183,4 +191,6 @@ def _mark_failure(
         session.commit()
     except Exception:  # pragma: no cover - best-effort logging
         session.rollback()
-        logger.error("Failed to persist failure status for file_id=%s", file_record.file_id)
+        logger.error(
+            "Failed to persist failure status for file_id=%s", file_record.file_id
+        )

@@ -181,12 +181,16 @@ def test_split_s3_uri_validation() -> None:
     with pytest.raises(StorageError):
         _split_s3_uri("invalid://bucket/key", default_bucket="fallback")
 
-    bucket, key = _split_s3_uri("s3://bucket-name/path/to.txt", default_bucket="fallback")
+    bucket, key = _split_s3_uri(
+        "s3://bucket-name/path/to.txt", default_bucket="fallback"
+    )
     assert bucket == "bucket-name"
     assert key == "path/to.txt"
 
 
-def test_get_storage_client_local_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_storage_client_local_backend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("UPLOAD_BACKEND", "local")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(tmp_path))
     settings_module.get_settings.cache_clear()
@@ -297,7 +301,9 @@ class _DummyAnalysis:
         self.warnings: List[str] = []
 
 
-def _create_upload_entities(db: Session) -> Tuple[models.UploadedFile, models.SurveyBatch]:
+def _create_upload_entities(
+    db: Session,
+) -> Tuple[models.UploadedFile, models.SurveyBatch]:
     uploaded = models.UploadedFile(
         course_name="強化学習",
         lecture_date=date(2024, 7, 1),
@@ -326,7 +332,9 @@ def test_validate_csv_requires_comment_columns() -> None:
         upload_pipeline.validate_csv_or_raise(b"header1,header2\nvalue1,value2\n")
 
 
-def test_analyze_and_store_comments(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_analyze_and_store_comments(
+    db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     uploaded, batch = _create_upload_entities(db_session)
 
     calls: List[bool] = []
@@ -337,9 +345,7 @@ def test_analyze_and_store_comments(db_session: Session, monkeypatch: pytest.Mon
         calls.append(skip_llm_analysis)
         importance = "low" if skip_llm_analysis else "high"
         sentiment = "neutral" if skip_llm_analysis else "positive"
-        return _DummyAnalysis(
-            sentiment_value=sentiment, importance_level=importance
-        )
+        return _DummyAnalysis(sentiment_value=sentiment, importance_level=importance)
 
     monkeypatch.setattr(upload_pipeline, "analyze_comment", _fake_analyze_comment)
 
@@ -375,4 +381,3 @@ def test_analyze_and_store_comments(db_session: Session, monkeypatch: pytest.Mon
     # （任意）列のみLLM分析対象、必須列はスキップされる
     assert calls.count(False) == 1
     assert calls.count(True) == 2
-

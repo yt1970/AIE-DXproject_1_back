@@ -45,7 +45,7 @@ def list_courses(
     period = period.strip() if period else None
 
     q = db.query(models.Lecture)
-    
+
     if name:
         q = q.filter(func.lower(models.Lecture.course_name).like(f"%{name.lower()}%"))
     if year is not None:
@@ -64,12 +64,14 @@ def list_courses(
     sort_exp = sort_col.desc() if sort_order_lower == "desc" else sort_col.asc()
 
     lectures = q.order_by(sort_exp).all()
-    
+
     if lectures:
         return [
             LectureInfo(
                 course_name=lec.course_name,
-                academic_year=str(lec.academic_year) if lec.academic_year is not None else None,
+                academic_year=(
+                    str(lec.academic_year) if lec.academic_year is not None else None
+                ),
                 period=lec.period,
             )
             for lec in lectures
@@ -81,7 +83,7 @@ def list_courses(
         models.UploadedFile.academic_year,
         models.UploadedFile.period,
     ).distinct()
-    
+
     if name:
         q_fallback = q_fallback.filter(
             func.lower(models.UploadedFile.course_name).like(f"%{name.lower()}%")
@@ -92,7 +94,7 @@ def list_courses(
         q_fallback = q_fallback.filter(
             func.lower(models.UploadedFile.period) == period.lower()
         )
-    
+
     uploaded_file_sort_map = {
         "course_name": models.UploadedFile.course_name,
         "academic_year": models.UploadedFile.academic_year,
@@ -100,13 +102,13 @@ def list_courses(
     }
     fallback_sort_col = uploaded_file_sort_map[sort_by]
     fallback_sort_exp = (
-        fallback_sort_col.desc() if sort_order_lower == "desc" else fallback_sort_col.asc()
+        fallback_sort_col.desc()
+        if sort_order_lower == "desc"
+        else fallback_sort_col.asc()
     )
-    
+
     rows = q_fallback.order_by(fallback_sort_exp).all()
     return [
         LectureInfo(course_name=name, academic_year=year_str, period=period_str)
         for name, year_str, period_str in rows
     ]
-
-

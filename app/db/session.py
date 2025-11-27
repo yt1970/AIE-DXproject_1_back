@@ -25,6 +25,7 @@ engine = create_engine(DATABASE_URL, pool_pre_ping=True, connect_args=connect_ar
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+
 def get_db():
     """
     FastAPI依存性注入用のDBセッションをリクエスト単位で提供する。

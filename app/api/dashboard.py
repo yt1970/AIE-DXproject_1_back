@@ -124,7 +124,9 @@ def _aggregate_categories(
 ) -> Dict[str, int]:
     return {
         "lecture_content": sum(int(s.category_lecture_content or 0) for s in summaries),
-        "lecture_material": sum(int(s.category_lecture_material or 0) for s in summaries),
+        "lecture_material": sum(
+            int(s.category_lecture_material or 0) for s in summaries
+        ),
         "operations": sum(int(s.category_operations or 0) for s in summaries),
         "other": sum(int(s.category_other or 0) for s in summaries),
     }
@@ -169,10 +171,14 @@ def _load_summaries(
     return survey_map, comment_map
 
 
-def _format_scores(summary: Optional[models.SurveySummary]) -> Dict[str, Optional[float]]:
+def _format_scores(
+    summary: Optional[models.SurveySummary],
+) -> Dict[str, Optional[float]]:
     if not summary:
         return {k: None for k in _SCORE_FIELD_MAP.keys()}
-    return {out_key: getattr(summary, attr) for out_key, attr in _SCORE_FIELD_MAP.items()}
+    return {
+        out_key: getattr(summary, attr) for out_key, attr in _SCORE_FIELD_MAP.items()
+    }
 
 
 @router.get("/dashboard/{lecture_id}/overview")
@@ -194,10 +200,21 @@ def dashboard_overview(
     if not batches:
         return {
             "scores": {},
-            "nps": {"score": 0.0, "promoters": 0, "passives": 0, "detractors": 0, "total": 0},
+            "nps": {
+                "score": 0.0,
+                "promoters": 0,
+                "passives": 0,
+                "detractors": 0,
+                "total": 0,
+            },
             "counts": {"responses": 0, "comments": 0, "important_comments": 0},
             "sentiments": {"positive": 0, "negative": 0, "neutral": 0},
-            "categories": {"lecture_content": 0, "lecture_material": 0, "operations": 0, "other": 0},
+            "categories": {
+                "lecture_content": 0,
+                "lecture_material": 0,
+                "operations": 0,
+                "other": 0,
+            },
             "timeline": [],
         }
 
@@ -232,7 +249,9 @@ def dashboard_overview(
                 "batch_id": batch.id,
                 "nps": summary.nps_score if summary else 0.0,
                 "response_count": summary.responses_count if summary else 0,
-                "avg_overall_satisfaction": summary.score_overall_satisfaction if summary else None,
+                "avg_overall_satisfaction": (
+                    summary.score_overall_satisfaction if summary else None
+                ),
             }
         )
 
@@ -269,7 +288,9 @@ def dashboard_per_lecture(
     lectures_payload: List[dict] = []
     for lecture_num, batch in chosen_sorted:
         summary = _pick_summary(batch.id, version or "final", survey_map)
-        comment_summary = _pick_comment_summary(batch.id, version or "final", comment_map)
+        comment_summary = _pick_comment_summary(
+            batch.id, version or "final", comment_map
+        )
         lectures_payload.append(
             {
                 "lecture_number": lecture_num,
@@ -282,18 +303,32 @@ def dashboard_per_lecture(
                     "detractors": summary.nps_detractors if summary else 0,
                     "total": summary.nps_total if summary else 0,
                 },
-                "sentiments": _aggregate_sentiments([comment_summary] if comment_summary else []),
-                "categories": _aggregate_categories([comment_summary] if comment_summary else []),
+                "sentiments": _aggregate_sentiments(
+                    [comment_summary] if comment_summary else []
+                ),
+                "categories": _aggregate_categories(
+                    [comment_summary] if comment_summary else []
+                ),
                 "importance": {
                     "low": comment_summary.importance_low if comment_summary else 0,
-                    "medium": comment_summary.importance_medium if comment_summary else 0,
+                    "medium": (
+                        comment_summary.importance_medium if comment_summary else 0
+                    ),
                     "high": comment_summary.importance_high if comment_summary else 0,
-                    "important_comments": comment_summary.important_comments_count if comment_summary else 0,
+                    "important_comments": (
+                        comment_summary.important_comments_count
+                        if comment_summary
+                        else 0
+                    ),
                 },
                 "counts": {
                     "responses": summary.responses_count if summary else 0,
                     "comments": summary.comments_count if summary else 0,
-                    "important_comments": comment_summary.important_comments_count if comment_summary else 0,
+                    "important_comments": (
+                        comment_summary.important_comments_count
+                        if comment_summary
+                        else 0
+                    ),
                 },
             }
         )
