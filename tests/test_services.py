@@ -284,20 +284,20 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 # Upload pipeline tests
 # ---------------------------------------------------------------------------
-class _DummySentiment:
+class _DummyEnum:
     def __init__(self, value: str) -> None:
         self.value = value
 
 
 class _DummyAnalysis:
     def __init__(self, *, sentiment_value: str, importance_level: str) -> None:
-        self.category = "講義内容"
+        self.category_normalized = _DummyEnum("講義内容")
         self.summary = "要約"
         self.importance_level = importance_level
+        self.importance_normalized = _DummyEnum(importance_level)
         self.importance_score = 0.8
-        self.risk_level = "low"
-        self.sentiment = sentiment_value
-        self.sentiment_normalized = _DummySentiment(sentiment_value)
+        self.risk_level_normalized = _DummyEnum("low")
+        self.sentiment_normalized = _DummyEnum(sentiment_value)
         self.warnings: List[str] = []
 
 

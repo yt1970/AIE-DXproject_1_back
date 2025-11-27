@@ -20,31 +20,22 @@ class CommentAnalysisResult:
         is_improvement_needed: bool,
         is_slanderous: bool,
         sentiment_normalized: SentimentType,
-        sentiment: str,
-        risk_level_normalized: RiskLevelType,
-        risk_level: str,
-        category_normalized: CategoryType,
-        category: str,
-        importance_normalized: ImportanceType,
-        importance_level: str,
         *,
         llm_result: llm_analyzer.LLMAnalysisResult,
+        risk_level_normalized: RiskLevelType,
+        category_normalized: CategoryType,
+        importance_normalized: ImportanceType,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
         self.is_slanderous = is_slanderous
-        self.sentiment = sentiment
         self.sentiment_normalized = sentiment_normalized
-
         # LLM分析結果の詳細情報
         self.category_normalized = category_normalized
-        self.category = llm_result.category
         self.summary = llm_result.summary
-        self.importance_level_normalized = importance_level_normalized
-        self.importance_level = llm_result.importance_level
+        self.importance_normalized = importance_normalized
         self.importance_score = llm_result.importance_score
         self.risk_level_normalized = risk_level_normalized
-        self.risk_level = llm_result.risk_level
 
         # デバッグやログ用の追加情報
         self.warnings = llm_result.warnings

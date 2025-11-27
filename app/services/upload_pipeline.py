@@ -123,7 +123,9 @@ def analyze_and_store_comments(
                 )
 
             is_important = (
-                1 if analysis_result.importance_level in ("medium", "high") else 0
+                1
+                if analysis_result.importance_normalized.value in ("medium", "high")
+                else 0
             )
 
             comment_to_add = models.ResponseComment(
