@@ -51,11 +51,8 @@ def upgrade() -> None:
                existing_type=sa.BigInteger(),
                nullable=False)
 
-    # Update response_comments table - foreign key
-    with op.batch_alter_table('response_comments', schema=None) as batch_op:
-        batch_op.alter_column('response_id',
-               existing_type=sa.BigInteger(),
-               nullable=False)
+
+    # NOTE: response_comments foreign key constraints are not part of current schema
 
     # Update survey_summaries table - foreign key and NPS counts
     with op.batch_alter_table('survey_summaries', schema=None) as batch_op:
@@ -121,11 +118,8 @@ def downgrade() -> None:
                existing_type=sa.BigInteger(),
                nullable=True)
 
-    # Revert response_comments table
-    with op.batch_alter_table('response_comments', schema=None) as batch_op:
-        batch_op.alter_column('response_id',
-               existing_type=sa.BigInteger(),
-               nullable=True)
+
+    # NOTE: response_comments changes not applicable
 
     # Revert survey_responses table
     with op.batch_alter_table('survey_responses', schema=None) as batch_op:

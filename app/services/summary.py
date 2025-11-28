@@ -65,10 +65,7 @@ def compute_and_upsert_summaries(
         db, survey_batch.id, student_attribute=student_attribute
     )
     # サマリー間でカウントを揃える
-    survey_summary.comments_count = comment_counts.get("comments_count", 0)
-    survey_summary.important_comments_count = comment_counts.get(
-        "important_comments_count", 0
-    )
+    # Note: comments_count fields removed from model, counts tracked in comment_summaries table
 
     now = datetime.now(UTC)
     survey_summary.updated_at = now
@@ -131,9 +128,7 @@ def _populate_survey_summary(
     summary.nps_total = nps_breakdown["total"]
 
     # コメント関連のカウントは後でコメントサマリーから反映して整合を取る
-    # が、Noneを避けるためデフォルト0を設定しておく
-    summary.comments_count = summary.comments_count or 0
-    summary.important_comments_count = summary.important_comments_count or 0
+    # Note: comments_count and important_comments_count were removed from model
 
 
 def _refresh_comment_summary(
