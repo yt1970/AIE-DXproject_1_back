@@ -128,6 +128,9 @@ def delete_uploaded_analysis(
     db.query(models.CommentSummary).filter(
         models.CommentSummary.survey_batch_id == survey_batch.id
     ).delete(synchronize_session=False)
+    db.query(models.ScoreDistribution).filter(
+        models.ScoreDistribution.survey_batch_id == survey_batch.id
+    ).delete(synchronize_session=False)
     
     db.delete(survey_batch)
     db.commit()

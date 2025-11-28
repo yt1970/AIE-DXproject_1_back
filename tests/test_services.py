@@ -273,7 +273,7 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
                 ("negative", "講義資料", "high"),
                 ("neutral", "運営", "low"),
             ],
-            start=1,
+            start=0,  # Start at 0 to match responses list indices
         )
     ]
     db_session.add_all(comments)

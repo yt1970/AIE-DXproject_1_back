@@ -41,10 +41,7 @@ def upgrade() -> None:
         batch_op.drop_column('analysis_version')
         batch_op.drop_column('question_text')
 
-    # Now drop the tables after constraints are removed
-    op.drop_table('uploaded_files')
-    op.drop_table('lecture_metrics')
-    
+    # Process comment_summaries before dropping tables (no FK dependency)
     with op.batch_alter_table('comment_summaries', schema=None) as batch_op:
         batch_op.alter_column('id',
                existing_type=sa.BIGINT(),
@@ -52,6 +49,10 @@ def upgrade() -> None:
                existing_nullable=False,
                autoincrement=True)
         batch_op.drop_column('analysis_version')
+
+    # Now drop the tables after FK columns are removed
+    op.drop_table('uploaded_files')
+    op.drop_table('lecture_metrics')
 
     with op.batch_alter_table('score_distributions', schema=None) as batch_op:
         batch_op.alter_column('id',
