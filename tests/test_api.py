@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+import warnings
 from datetime import date, datetime
 from pathlib import Path
 from typing import Generator
 
 import pytest
-import warnings
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker

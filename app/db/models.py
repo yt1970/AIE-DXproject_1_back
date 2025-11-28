@@ -1,11 +1,12 @@
 import enum
+
 from sqlalchemy import (
+    DECIMAL,
     BigInteger,
     Boolean,
     Column,
     Date,
     DateTime,
-    DECIMAL,
     Enum,
     ForeignKey,
     Integer,
