@@ -17,9 +17,7 @@ from .celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-PROCESSING_STATUS = "PROCESSING"
 COMPLETED_STATUS = "COMPLETED"
-FAILED_STATUS = "FAILED"
 
 
 @celery_app.task(
@@ -28,65 +26,33 @@ FAILED_STATUS = "FAILED"
     max_retries=celery_app.conf.task_max_retries,
     default_retry_delay=celery_app.conf.task_default_retry_delay,
 )
-def process_uploaded_file(self: Task, *, file_id: int) -> dict:
+def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
     """
     Process an uploaded CSV by running LLM analysis for each comment.
-
-    Returns:
-        辞書形式の処理統計情報
+    
+    Args:
+        batch_id: SurveyBatch ID
+        s3_key: S3 key (or path) to download the file from
     """
 
     session: Session = db_session.SessionLocal()
     storage_client = get_storage_client()
-    file_record: Optional[models.UploadedFile] = None
     survey_batch: Optional[models.SurveyBatch] = None
 
     try:
-        file_record = session.get(models.UploadedFile, file_id)
-        if not file_record:
-            logger.warning("UploadedFile not found for uploaded_file_id=%s", file_id)
-            return {"uploaded_file_id": file_id, "status": "missing"}
-
-        file_record.status = PROCESSING_STATUS
-        file_record.processing_started_at = datetime.now(UTC)
-        file_record.error_message = None
-        session.add(file_record)
-        session.commit()
-
-        content_bytes = storage_client.load(uri=file_record.s3_key)
-
-        # SurveyBatch を作成または取得
-        survey_batch = (
-            session.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.uploaded_file_id == file_id)
-            .first()
-        )
+        survey_batch = session.get(models.SurveyBatch, batch_id)
         if not survey_batch:
-            survey_batch = models.SurveyBatch(
-                uploaded_file_id=file_record.id,
-                lecture_id=file_record.lecture_id,
-                course_name=file_record.course_name,
-                lecture_date=file_record.lecture_date,
-                lecture_number=file_record.lecture_number,
-                academic_year=file_record.academic_year,
-                period=file_record.period,
-                status=PROCESSING_STATUS,
-                uploaded_at=file_record.uploaded_at,
-                processing_started_at=datetime.now(UTC),
-                error_message=None,
-            )
-            session.add(survey_batch)
-            session.flush()
-        else:
-            survey_batch.status = PROCESSING_STATUS
-            survey_batch.processing_started_at = datetime.now(UTC)
-            survey_batch.error_message = None
-            session.add(survey_batch)
+            logger.warning("SurveyBatch not found for batch_id=%s", batch_id)
+            return {"batch_id": batch_id, "status": "missing"}
+
+        # Note: Status tracking columns (status, processing_started_at, etc.) 
+        # have been removed from the design, so we don't update them here.
+        
+        content_bytes = storage_client.load(uri=s3_key)
 
         total_comments, processed_comments, total_responses = (
             analyze_and_store_comments(
                 db=session,
-                file_record=file_record,
                 survey_batch=survey_batch,
                 content_bytes=content_bytes,
             )
@@ -95,18 +61,8 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
         # 挿入済みのコメント/回答を先に確定させ、後続の重い集計でのロールバックを避ける
         session.commit()
 
-        now = datetime.now(UTC)
-        file_record.status = COMPLETED_STATUS
-        file_record.processing_completed_at = now
-        file_record.total_rows = total_comments
-        file_record.processed_rows = processed_comments
-        session.add(file_record)
-
-        survey_batch.status = COMPLETED_STATUS
-        survey_batch.processing_completed_at = now
-        session.add(survey_batch)
-
         # Pre-compute summaries for dashboard
+        # This effectively marks the batch as "done" when summaries are present
         compute_and_upsert_summaries(
             session, survey_batch=survey_batch, version="preliminary"
         )
@@ -114,15 +70,14 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
         session.commit()
 
         logger.info(
-            "Completed analysis for uploaded_file_id=%s (processed=%s)",
-            file_id,
+            "Completed analysis for batch_id=%s (processed=%s)",
+            batch_id,
             processed_comments,
         )
 
         return {
-            "uploaded_file_id": file_id,
-            "batch_id": survey_batch.id,
-            "status": COMPLETED_STATUS,
+            "batch_id": batch_id,
+            "status": "COMPLETED",
             "total_comments": total_comments,
             "processed_comments": processed_comments,
             "total_responses": total_responses,
@@ -130,10 +85,8 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
 
     except CsvValidationError as exc:
         session.rollback()
-        logger.exception("Background processing failed for uploaded_file_id=%s", file_id)
-        _mark_failure(
-            session, file_record, survey_batch=survey_batch, error_message=str(exc)
-        )
+        logger.exception("Background processing failed for batch_id=%s", batch_id)
+        # Cannot store error message in DB as per design
         raise
     except StorageError as exc:
         session.rollback()
@@ -144,53 +97,18 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
             else self.app.conf.task_max_retries
         )
         logger.warning(
-            "StorageError on processing uploaded_file_id=%s (attempt %s/%s): %s",
-            file_id,
+            "StorageError on processing batch_id=%s (attempt %s/%s): %s",
+            batch_id,
             retries + 1,
             max_retries,
             exc,
         )
         if max_retries is not None and retries >= max_retries:
-            _mark_failure(
-                session, file_record, survey_batch=survey_batch, error_message=str(exc)
-            )
             raise
         raise self.retry(exc=exc)
     except Exception as exc:  # pragma: no cover - unexpected failures
         session.rollback()
         logger.exception("Unexpected failure during background processing.")
-        _mark_failure(
-            session, file_record, survey_batch=survey_batch, error_message=str(exc)
-        )
         raise
     finally:
         session.close()
-
-
-def _mark_failure(
-    session: Session,
-    file_record: Optional[models.UploadedFile],
-    *,
-    error_message: str,
-    survey_batch: Optional[models.SurveyBatch] = None,
-) -> None:
-    if not file_record:
-        return
-
-    truncated = error_message[:1024]
-    file_record.status = FAILED_STATUS
-    file_record.processing_completed_at = datetime.now(UTC)
-    file_record.error_message = truncated
-    session.add(file_record)
-    if survey_batch:
-        survey_batch.status = FAILED_STATUS
-        survey_batch.processing_completed_at = datetime.now(UTC)
-        survey_batch.error_message = truncated
-        session.add(survey_batch)
-    try:
-        session.commit()
-    except Exception:  # pragma: no cover - best-effort logging
-        session.rollback()
-        logger.error(
-            "Failed to persist failure status for uploaded_file_id=%s", file_record.id
-        )

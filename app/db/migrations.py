@@ -372,9 +372,9 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     if "question_text" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN question_text TEXT")
 
-    if "survey_response_id" not in existing_columns:
+    if "response_id" not in existing_columns:
         statements.append(
-            "ALTER TABLE comment ADD COLUMN survey_response_id INTEGER REFERENCES survey_responses(id)"
+            "ALTER TABLE comment ADD COLUMN response_id INTEGER REFERENCES survey_responses(id)"
         )
 
     if "comment_text" not in existing_columns:
@@ -495,9 +495,9 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
         )
     if "question_text" not in existing_columns:
         statements.append("ALTER TABLE response_comments ADD COLUMN question_text TEXT")
-    if "survey_response_id" not in existing_columns:
+    if "response_id" not in existing_columns:
         statements.append(
-            "ALTER TABLE response_comments ADD COLUMN survey_response_id INTEGER REFERENCES survey_responses(id)"
+            "ALTER TABLE response_comments ADD COLUMN response_id INTEGER REFERENCES survey_responses(id)"
         )
     if "comment_text" not in existing_columns:
         statements.append("ALTER TABLE response_comments ADD COLUMN comment_text TEXT")

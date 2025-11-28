@@ -29,7 +29,7 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI):
         # Startup
         print(f"Application '{app.title}' starting up. ENV: {config.env}")
-        apply_migrations(engine)
+        # apply_migrations(engine)
         yield
         # Shutdown hook placeholder
 

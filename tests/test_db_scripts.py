@@ -65,12 +65,10 @@ def test_init_db_creates_expected_tables(session_reloader):
     tables = set(inspector.get_table_names())
 
     expected_tables = {
-        "uploaded_files",
         "survey_batches",
         "survey_responses",
         "response_comments",
         "lectures",
-        "lecture_metrics",
         "survey_summaries",
         "comment_summaries",
         "score_distributions",

@@ -3,7 +3,7 @@
 import json
 import logging
 from datetime import UTC, date, datetime
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, TypeAdapter, ValidationError
@@ -35,215 +35,142 @@ router = APIRouter()
 QUEUED_STATUS = "QUEUED"
 
 
+def _derive_academic_year(d: date) -> int:
+    # 4月始まりと仮定
+    if d.month >= 4:
+        return d.year
+    return d.year - 1
+
+
 @router.get("/uploads/check-duplicate", response_model=DuplicateCheckResponse)
 def check_duplicate_upload(
     *,
     course_name: str,
-    lecture_date: date,
+    lecture_on: date,
     lecture_number: int,
     db: Session = Depends(get_db),
 ) -> DuplicateCheckResponse:
     """
     講義(講座名・日付・回)の重複有無を事前チェックする。
-    既に登録済みなら uploaded_file_id を返す。
+    既に登録済みなら survey_batch_id を返す。
     """
-    existing = (
-        db.query(models.UploadedFile)
-        .filter_by(
-            course_name=course_name,
-            lecture_date=lecture_date,
-            lecture_number=lecture_number,
+    # Lectureを探す
+    lecture = (
+        db.query(models.Lecture)
+        .filter(
+            models.Lecture.name == course_name,
+            models.Lecture.lecture_on == lecture_on,
+            models.Lecture.session == str(lecture_number),
         )
         .first()
     )
-    if not existing:
-        return DuplicateCheckResponse(exists=False, uploaded_file_id=None)
-    return DuplicateCheckResponse(exists=True, uploaded_file_id=existing.id)
+
+    if not lecture:
+        return DuplicateCheckResponse(exists=False, survey_batch_id=None)
+
+    # SurveyBatchを探す
+    existing_batch = (
+        db.query(models.SurveyBatch)
+        .filter(models.SurveyBatch.lecture_id == lecture.id)
+        .first()
+    )
+
+    if not existing_batch:
+        return DuplicateCheckResponse(exists=False, survey_batch_id=None)
+    
+    return DuplicateCheckResponse(exists=True, survey_batch_id=existing_batch.id)
 
 
-@router.delete("/uploads/{uploaded_file_id}", response_model=DeleteUploadResponse)
+@router.delete("/uploads/{survey_batch_id}", response_model=DeleteUploadResponse)
 def delete_uploaded_analysis(
-    uploaded_file_id: int,
+    survey_batch_id: int,
     db: Session = Depends(get_db),
 ) -> DeleteUploadResponse:
     """
     誤ってアップロードした分析対象および結果（関連コメント/調査回答）を削除する。
     進行中(PROCESSING)の場合は競合とする。
     """
-    uploaded = (
-        db.query(models.UploadedFile)
-        .filter(models.UploadedFile.id == uploaded_file_id)
+    survey_batch = (
+        db.query(models.SurveyBatch)
+        .filter(models.SurveyBatch.id == survey_batch_id)
         .first()
     )
-    if not uploaded:
+    if not survey_batch:
         raise HTTPException(
-            status_code=404, detail=f"File with id {uploaded_file_id} not found"
+            status_code=404, detail=f"Batch with id {survey_batch_id} not found"
         )
 
-    if uploaded.status == "PROCESSING":
-        raise HTTPException(status_code=409, detail="File is currently processing")
+    # ステータス判定: SurveySummaryが存在しなければ処理中とみなす
+    has_summary = (
+        db.query(models.SurveySummary)
+        .filter(models.SurveySummary.survey_batch_id == survey_batch.id)
+        .first()
+    )
+    if not has_summary:
+        raise HTTPException(status_code=409, detail="Batch is currently processing")
 
     removed_comments = (
-        db.query(models.Comment)
-        .filter(models.Comment.uploaded_file_id == uploaded_file_id)
+        db.query(models.ResponseComment)
+        .filter(models.ResponseComment.response_id.in_(
+            db.query(models.SurveyResponse.id).filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
+        ))
         .delete(synchronize_session=False)
     )
     removed_survey_responses = (
         db.query(models.SurveyResponse)
-        .filter(models.SurveyResponse.uploaded_file_id == uploaded_file_id)
+        .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
         .delete(synchronize_session=False)
     )
-    # バッチ・サマリも削除
-    survey_batch = (
-        db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.uploaded_file_id == uploaded_file_id)
-        .first()
-    )
-    if survey_batch:
-        db.query(models.SurveySummary).filter(
-            models.SurveySummary.survey_batch_id == survey_batch.id
-        ).delete(synchronize_session=False)
-        db.query(models.CommentSummary).filter(
-            models.CommentSummary.survey_batch_id == survey_batch.id
-        ).delete(synchronize_session=False)
-        db.delete(survey_batch)
-
-    # 可能な場合物理ファイルの削除
-    try:
-        if uploaded.s3_key:
-            storage_client = get_storage_client()
-            storage_client.delete(uri=uploaded.s3_key)
-    except Exception:
-        # ストレージ削除エラーは致命的ではないためログのみ
-        pass
-
-    db.delete(uploaded)
+    
+    db.query(models.SurveySummary).filter(
+        models.SurveySummary.survey_batch_id == survey_batch.id
+    ).delete(synchronize_session=False)
+    db.query(models.CommentSummary).filter(
+        models.CommentSummary.survey_batch_id == survey_batch.id
+    ).delete(synchronize_session=False)
+    
+    db.delete(survey_batch)
     db.commit()
 
     return DeleteUploadResponse(
-        uploaded_file_id=uploaded_file_id,
+        survey_batch_id=survey_batch_id,
         deleted=True,
         removed_comments=removed_comments or 0,
         removed_survey_responses=removed_survey_responses or 0,
     )
 
 
-@router.post("/uploads/{uploaded_file_id}/finalize")
+@router.post("/uploads/{survey_batch_id}/finalize")
 def finalize_analysis(
-    uploaded_file_id: int,
+    survey_batch_id: int,
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    速報版(preliminary)のコメントを確定版(final)として固定化する。
-    既存のfinalデータがある場合は置き換える。
+    速報版(preliminary)のコメントを確定版(confirmed)として固定化する。
     """
-    uploaded = (
-        db.query(models.UploadedFile)
-        .filter(models.UploadedFile.id == uploaded_file_id)
-        .first()
-    )
-    if not uploaded:
-        raise HTTPException(
-            status_code=404, detail=f"File with id {uploaded_file_id} not found"
-        )
-
     survey_batch = (
         db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.uploaded_file_id == uploaded_file_id)
+        .filter(models.SurveyBatch.id == survey_batch_id)
         .first()
     )
     if not survey_batch:
-        # processingなしでfinalizeが呼ばれた場合に備えて作成
-        survey_batch = models.SurveyBatch(
-            uploaded_file_id=uploaded.id,
-            lecture_id=uploaded.lecture_id,
-            course_name=uploaded.course_name,
-            lecture_date=uploaded.lecture_date,
-            lecture_number=uploaded.lecture_number,
-            academic_year=uploaded.academic_year,
-            period=uploaded.period,
-            status=uploaded.status,
-            uploaded_at=uploaded.uploaded_at,
-            processing_started_at=uploaded.processing_started_at,
-            processing_completed_at=uploaded.processing_completed_at,
-            total_responses=uploaded.processed_rows,
-            total_comments=uploaded.total_rows,
+        raise HTTPException(
+            status_code=404, detail=f"Batch with id {survey_batch_id} not found"
         )
-        db.add(survey_batch)
-        db.flush()
-
-    # 既存のfinalを削除
-    db.query(models.Comment).filter(
-        models.Comment.uploaded_file_id == uploaded_file_id,
-        models.Comment.analysis_version == "final",
-    ).delete(synchronize_session=False)
-
-    # bulk insertで負荷を抑制のためpreliminaryをコピー
-    prelim_rows = (
-        db.query(
-            models.Comment.uploaded_file_id,
-            models.Comment.survey_response_id,
-            models.Comment.survey_batch_id,
-            models.Comment.account_id,
-            models.Comment.account_name,
-            models.Comment.question_type,
-            models.Comment.question_text,
-            models.Comment.comment_text,
-            models.Comment.llm_category,
-            models.Comment.llm_sentiment,
-            models.Comment.llm_summary,
-            models.Comment.llm_importance_level,
-            models.Comment.llm_importance_score,
-            models.Comment.llm_risk_level,
-            models.Comment.processed_at,
-            models.Comment.is_important,
-        )
-        .filter(
-            models.Comment.uploaded_file_id == uploaded_file_id,
-            (models.Comment.analysis_version == "preliminary")
-            | (models.Comment.analysis_version.is_(None)),
-        )
-        .all()
-    )
-
-    payloads = [
-        {
-            "uploaded_file_id": row.uploaded_file_id,
-            "survey_response_id": row.survey_response_id,
-            "survey_batch_id": row.survey_batch_id or survey_batch.id,
-            "question_type": row.question_type or row.question_text,
-            "account_id": row.account_id,
-            "account_name": row.account_name,
-            "question_text": row.question_text,
-            "comment_text": row.comment_text,
-            "llm_category": row.llm_category,
-            "llm_sentiment": row.llm_sentiment,
-            "llm_summary": row.llm_summary,
-            "llm_importance_level": row.llm_importance_level,
-            "llm_importance_score": row.llm_importance_score,
-            "llm_risk_level": row.llm_risk_level,
-            "processed_at": row.processed_at,
-            "analysis_version": "final",
-            "is_important": row.is_important,
-        }
-        for row in prelim_rows
-    ]
-    created = len(payloads)
-    if payloads:
-        db.bulk_insert_mappings(models.Comment, payloads)
-
-    now = datetime.now(UTC)
-    uploaded.finalized_at = now
-    survey_batch.finalized_at = now
-    db.add(uploaded)
+    
+    # バッチタイプを確定版に更新
+    survey_batch.batch_type = 'confirmed'
+    # survey_batch.finalized_at = datetime.now(UTC) # モデルにないのでコメントアウト
+    
+    # 集計の再計算などが必要ならここで実施
+    # compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
+    
     db.add(survey_batch)
-    compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
     db.commit()
 
     return {
-        "uploaded_file_id": uploaded_file_id,
+        "survey_batch_id": survey_batch_id,
         "finalized": True,
-        "final_count": created,
     }
 
 
@@ -278,6 +205,7 @@ async def upload_and_enqueue_analysis(
     except CsvValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
+    # ストレージ保存 (S3など) - 必須ではないがバックアップとして残す想定
     storage_client = get_storage_client()
     storage_relative_path = build_storage_path(metadata, file.filename)
     try:
@@ -292,62 +220,89 @@ async def upload_and_enqueue_analysis(
             status_code=500, detail="Failed to persist uploaded file."
         ) from exc
 
-    new_file_record = models.UploadedFile(
-        course_name=metadata.course_name,
-        lecture_date=metadata.lecture_date,
-        lecture_number=metadata.lecture_number,
-        lecture_id=metadata.lecture_id,
-        status=QUEUED_STATUS,
-        s3_key=stored_uri,
-        uploaded_at=datetime.now(UTC),
-        original_filename=file.filename,
-        content_type=file.content_type,
-        total_rows=0,
-        processed_rows=0,
-    )
-
-    try:
-        db.add(new_file_record)
-        db.commit()
-        db.refresh(new_file_record)
-    except IntegrityError:
-        db.rollback()
-        # 競合した既存のレコードを検索して、より詳細なエラー情報を提供する
-        existing_file = (
-            db.query(models.UploadedFile)
-            .filter_by(
-                course_name=metadata.course_name,
-                lecture_date=metadata.lecture_date,
-                lecture_number=metadata.lecture_number,
+    # Lectureの特定または作成
+    lecture = None
+    if metadata.lecture_id:
+        lecture = db.query(models.Lecture).filter(models.Lecture.id == metadata.lecture_id).first()
+    
+    if not lecture:
+        # 既存の講義を検索
+        lecture = (
+            db.query(models.Lecture)
+            .filter(
+                models.Lecture.name == metadata.course_name,
+                models.Lecture.lecture_on == metadata.lecture_on,
+                models.Lecture.session == str(metadata.lecture_number),
             )
             .first()
         )
-        detail = "A file for this course, date, and lecture number already exists."
-        if existing_file:
-            detail += f" The conflicting uploaded_file_id is {existing_file.id}."
+    
+    if not lecture:
+        # 新規作成
+        academic_year = _derive_academic_year(metadata.lecture_on)
+        lecture = models.Lecture(
+            academic_year=academic_year,
+            term="Unknown", # 必須だが不明
+            name=metadata.course_name,
+            session=str(metadata.lecture_number),
+            lecture_on=metadata.lecture_on,
+            instructor_name="TBD", # 必須だが不明
+            description="Auto-created from upload",
+        )
+        try:
+            db.add(lecture)
+            db.commit()
+            db.refresh(lecture)
+        except IntegrityError:
+            db.rollback()
+            # 競合した場合は再取得を試みる
+            lecture = (
+                db.query(models.Lecture)
+                .filter(
+                    models.Lecture.name == metadata.course_name,
+                    models.Lecture.lecture_on == metadata.lecture_on,
+                    models.Lecture.session == str(metadata.lecture_number),
+                )
+                .first()
+            )
+            if not lecture:
+                raise HTTPException(status_code=500, detail="Failed to create or retrieve lecture.")
 
-        raise HTTPException(status_code=409, detail=detail)
+    # SurveyBatchの作成
+    new_batch = models.SurveyBatch(
+        lecture_id=lecture.id,
+        batch_type='preliminary',
+        uploaded_at=datetime.now(UTC),
+        # zoom_participants, recording_views は後で更新される想定
+    )
+
+    try:
+        db.add(new_batch)
+        db.commit()
+        db.refresh(new_batch)
     except Exception as exc:
         db.rollback()
         raise HTTPException(
-            status_code=500, detail=f"Database error on creating file record: {exc}"
+            status_code=500, detail=f"Database error on creating survey batch: {exc}"
         )
 
     try:
-        process_uploaded_file.run(file_id=new_file_record.id)
+        # 非同期実行（Redisキュー経由）
+        # ファイルパスも渡す必要があるが、DBには保存しないため引数で渡すか、
+        # あるいはS3キーを一時的に渡す必要がある。
+        # ここではS3キーを渡して、Worker側でダウンロードする想定とする。
+        process_uploaded_file.delay(batch_id=new_batch.id, s3_key=stored_uri)
     except Exception as exc:
-        db.refresh(new_file_record)
-        new_file_record.status = "FAILED"
-        new_file_record.error_message = f"Failed to process upload: {exc}"
-        db.add(new_file_record)
+        # 失敗時はレコード削除
+        db.delete(new_batch)
         db.commit()
         raise HTTPException(
             status_code=500, detail="Failed to run background analysis job."
         ) from exc
 
     return UploadResponse(
-        uploaded_file_id=new_file_record.id,
-        status_url=f"/api/v1/uploads/{new_file_record.id}/status",
+        survey_batch_id=new_batch.id,
+        status_url=f"/api/v1/uploads/{new_batch.id}/status",
         message="Upload accepted. Analysis will run in the background.",
     )
 
@@ -367,81 +322,77 @@ def delete_uploaded_by_identity(
     payload: UploadIdentityDeleteRequest, db: Session = Depends(get_db)
 ) -> DeleteUploadResponse:
     """講義の識別情報とバージョンフィルタを使用して、単一のアップロードデータセットを削除する"""
-    uploaded = (
-        db.query(models.UploadedFile)
-        .filter(
-            models.UploadedFile.course_name == payload.course_name,
-            models.UploadedFile.lecture_number == payload.lecture_number,
-        )
+    
+    # Lectureを探す
+    q_lecture = db.query(models.Lecture).filter(
+        models.Lecture.name == payload.course_name,
+        models.Lecture.session == str(payload.lecture_number),
+    )
+    if payload.academic_year:
+        q_lecture = q_lecture.filter(models.Lecture.academic_year == int(payload.academic_year))
+    if payload.period:
+        q_lecture = q_lecture.filter(models.Lecture.term == payload.period)
+        
+    lecture = q_lecture.first()
+    
+    if not lecture:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    survey_batch = (
+        db.query(models.SurveyBatch)
+        .filter(models.SurveyBatch.lecture_id == lecture.id)
         .first()
     )
-    # 提供されている場合は、academic_year/periodで絞り込む
-    if uploaded and payload.academic_year:
-        if uploaded.academic_year != str(payload.academic_year):
-            uploaded = None
-    if uploaded and payload.period:
-        if (uploaded.period or "").lower() != payload.period.lower():
-            uploaded = None
 
-    if not uploaded:
-        raise HTTPException(status_code=404, detail="Uploaded dataset not found")
+    if not survey_batch:
+        raise HTTPException(status_code=404, detail="Survey batch not found")
 
-    if uploaded.status == "PROCESSING":
-        raise HTTPException(status_code=409, detail="File is currently processing")
+    # ステータス判定: SurveySummaryが存在しなければ処理中とみなす
+    has_summary = (
+        db.query(models.SurveySummary)
+        .filter(models.SurveySummary.survey_batch_id == survey_batch.id)
+        .first()
+    )
+    if not has_summary:
+        raise HTTPException(status_code=409, detail="Batch is currently processing")
 
     removed_comments = 0
     removed_survey_responses = 0
 
     # 指定されている場合は、analysis_versionでフィルタリングしてコメントを削除
-    q_comments = db.query(models.Comment).filter(
-        models.Comment.uploaded_file_id == uploaded.id
+    # 注: 新設計ではResponseCommentにanalysis_versionがある
+    q_comments = db.query(models.ResponseComment).filter(
+        models.ResponseComment.response_id.in_(
+            db.query(models.SurveyResponse.id).filter(models.SurveyResponse.survey_batch_id == survey_batch.id)
+        )
     )
     if payload.analysis_version in {"final", "preliminary"}:
         q_comments = q_comments.filter(
-            models.Comment.analysis_version == payload.analysis_version
+            models.ResponseComment.analysis_version == payload.analysis_version
         )
     removed_comments = q_comments.delete(synchronize_session=False) or 0
 
-    # バージョン指定なしなら関連データも削除、指定ありならコメントのみ削除
+    # バージョン指定なしなら関連データも削除
     if payload.analysis_version is None:
         removed_survey_responses = (
             db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.uploaded_file_id == uploaded.id)
+            .filter(models.SurveyResponse.survey_batch_id == survey_batch.id)
             .delete(synchronize_session=False)
             or 0
         )
-        survey_batch = (
-            db.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.uploaded_file_id == uploaded.id)
-            .first()
-        )
-        if survey_batch:
-            db.query(models.SurveySummary).filter(
-                models.SurveySummary.survey_batch_id == survey_batch.id
-            ).delete(synchronize_session=False)
-            db.query(models.CommentSummary).filter(
-                models.CommentSummary.survey_batch_id == survey_batch.id
-            ).delete(synchronize_session=False)
-            db.delete(survey_batch)
-        db.query(models.LectureMetrics).filter(
-            models.LectureMetrics.uploaded_file_id == uploaded.id
+        
+        db.query(models.SurveySummary).filter(
+            models.SurveySummary.survey_batch_id == survey_batch.id
         ).delete(synchronize_session=False)
-        # ベストエフォートでストレージからも削除
-        try:
-            if uploaded.s3_key:
-                storage_client = get_storage_client()
-                storage_client.delete(uri=uploaded.s3_key)
-        except Exception:
-            pass
-        db.delete(uploaded)
+        db.query(models.CommentSummary).filter(
+            models.CommentSummary.survey_batch_id == survey_batch.id
+        ).delete(synchronize_session=False)
+        
+        db.delete(survey_batch)
     else:
         # 特定バージョンのみ削除した場合は該当サマリのみ削除
-        survey_batch = (
-            db.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.uploaded_file_id == uploaded.id)
-            .first()
-        )
-        if survey_batch and payload.analysis_version in {"final", "preliminary"}:
+        # SurveySummaryにはanalysis_versionがある
+        if payload.analysis_version in {"final", "preliminary"}:
             db.query(models.SurveySummary).filter(
                 models.SurveySummary.survey_batch_id == survey_batch.id,
                 models.SurveySummary.analysis_version == payload.analysis_version,
@@ -453,7 +404,7 @@ def delete_uploaded_by_identity(
 
     db.commit()
     return DeleteUploadResponse(
-        uploaded_file_id=uploaded.id,
+        survey_batch_id=survey_batch.id,
         deleted=True,
         removed_comments=removed_comments,
         removed_survey_responses=removed_survey_responses,

@@ -21,7 +21,6 @@ LLM_ANALYSIS_TARGET_PREFIX = "（任意）"
 # 【必須】または（任意）から始まる列をコメントとして保存
 COMMENT_SAVE_TARGET_PREFIXES = ("（任意）", "【必須】")
 ACCOUNT_ID_KEYS = ["アカウントID", "account_id", "アカウント ID"]
-ACCOUNT_NAME_KEYS = ["アカウント名", "account_name", "アカウント 名"]
 STUDENT_ATTRIBUTE_KEYS = ["受講生の属性", "受講生属性", "student_attribute"]
 
 
@@ -32,7 +31,6 @@ class CsvValidationError(ValueError):
 def analyze_and_store_comments(
     *,
     db: Session,
-    file_record: models.UploadedFile,
     survey_batch: models.SurveyBatch,
     content_bytes: bytes,
     debug_logging: bool = False,
@@ -56,16 +54,16 @@ def analyze_and_store_comments(
     # 数値評価カラムとモデル属性の対応表
     score_column_map = {
         "本日の総合的な満足度を５段階で教えてください。": "score_satisfaction_overall",
-        "本日の講義内容について５段階で教えてください。\n学習量は適切だった": "score_satisfaction_content_volume",
-        "本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた": "score_satisfaction_content_understanding",
-        "本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった": "score_satisfaction_content_announcement",
-        "本日の講師の総合的な満足度を５段階で教えてください。": "score_satisfaction_instructor_overall",
-        "本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた": "score_satisfaction_instructor_efficiency",
-        "本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた": "score_satisfaction_instructor_response",
-        "本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった": "score_satisfaction_instructor_clarity",
+        "本日の講義内容について５段階で教えてください。\n学習量は適切だった": "score_content_volume",
+        "本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた": "score_content_understanding",
+        "本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった": "score_content_announcement",
+        "本日の講師の総合的な満足度を５段階で教えてください。": "score_instructor_overall",
+        "本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた": "score_instructor_time",
+        "本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた": "score_instructor_qa",
+        "本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった": "score_instructor_speaking",
         "ご自身について５段階で教えてください。\n事前に予習をした": "score_self_preparation",
         "ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ": "score_self_motivation",
-        "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる": "score_self_applicability",
+        "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる": "score_self_future",
         "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_friend",
     }
 
@@ -75,50 +73,26 @@ def analyze_and_store_comments(
             logger.debug("Raw row data from CSV: %s", row)
 
         account_id = _get_value_from_keys(row, ACCOUNT_ID_KEYS, debug_logs_enabled)
-        account_name = _get_value_from_keys(row, ACCOUNT_NAME_KEYS, debug_logs_enabled)
         student_attribute = _get_value_from_keys(
             row, STUDENT_ATTRIBUTE_KEYS, debug_logs_enabled
         )
 
         if debug_logs_enabled:
             logger.debug(
-                "Extracted account_id: %s, account_name: %s", account_id, account_name
+                "Extracted account_id: %s", account_id
             )
 
         # 数値評価を1行1件でSurveyResponseに保存
         survey_response_data = {
-            "uploaded_file_id": file_record.id,
             "survey_batch_id": survey_batch.id,
             "account_id": account_id,
-            "account_name": account_name,
             "student_attribute": student_attribute or "ALL",
-            "row_index": row_index,
         }
         for col_name, attr_name in score_column_map.items():
             if col_name in row and row[col_name] and row[col_name].isdigit():
                 survey_response_data[attr_name] = int(row[col_name])
 
-        # 既存のカラム名に加え、新設計の別名にも値をコピーする
-        # instructor効率 -> time, response -> qa, clarity -> speaking
-        if "score_satisfaction_instructor_efficiency" in survey_response_data:
-            survey_response_data.setdefault(
-                "score_instructor_time",
-                survey_response_data["score_satisfaction_instructor_efficiency"],
-            )
-        if "score_satisfaction_instructor_response" in survey_response_data:
-            survey_response_data.setdefault(
-                "score_instructor_qa",
-                survey_response_data["score_satisfaction_instructor_response"],
-            )
-        if "score_satisfaction_instructor_clarity" in survey_response_data:
-            survey_response_data.setdefault(
-                "score_instructor_speaking",
-                survey_response_data["score_satisfaction_instructor_clarity"],
-            )
-        if "score_self_applicability" in survey_response_data:
-            survey_response_data.setdefault(
-                "score_self_future", survey_response_data["score_self_applicability"]
-            )
+
         # score_recommend_friendをそのまま保持
 
         survey_response_record = models.SurveyResponse(**survey_response_data)
@@ -139,7 +113,7 @@ def analyze_and_store_comments(
 
             analysis_result = analyze_comment(
                 comment_text,
-                course_name=file_record.course_name,
+                course_name=survey_batch.lecture.name,
                 question_text=column_name,
                 # 分析不要な場合はスキップフラグを渡す
                 skip_llm_analysis=not should_analyze_with_llm,
@@ -150,36 +124,19 @@ def analyze_and_store_comments(
                     "; ".join(analysis_result.warnings),
                 )
 
-            is_important = (
-                1
-                if analysis_result.importance_normalized.value in ("medium", "high")
-                else 0
-            )
-
             comment_to_add = models.ResponseComment(
-                survey_response_id=survey_response_record.id,
-                uploaded_file_id=file_record.id,
-                survey_batch_id=survey_batch.id,
-                account_id=account_id,
-                account_name=account_name,
-                question_text=column_name,
+                response_id=survey_response_record.id,
                 question_type=column_name,
                 comment_text=comment_text,
                 llm_category=analysis_result.category_normalized.value,
-                llm_sentiment=(
+                llm_sentiment_type=(
                     analysis_result.sentiment_normalized.value
                     if analysis_result.sentiment_normalized
                     else None
                 ),
-                llm_summary=analysis_result.summary,
                 llm_importance_level=analysis_result.importance_normalized.value,
-                llm_importance_score=analysis_result.importance_score,
-                llm_risk_level=analysis_result.risk_level_normalized.value,
                 llm_is_abusive=analysis_result.risk_level_normalized
                 == models.RiskLevelType.flag,
-                processed_at=datetime.now(UTC),
-                analysis_version="preliminary",
-                is_important=is_important,
                 is_analyzed=True,
             )
 
@@ -191,9 +148,9 @@ def analyze_and_store_comments(
             db.add(comment_to_add)
             processed_comments += 1
 
-    survey_batch.total_responses = total_responses
-    survey_batch.total_comments = total_comments
-    db.add(survey_batch)
+    # survey_batch.total_responses = total_responses
+    # survey_batch.total_comments = total_comments
+    # db.add(survey_batch)
 
     return total_comments, processed_comments, total_responses
 
@@ -208,7 +165,7 @@ def validate_csv_or_raise(content_bytes: bytes) -> None:
 def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:
     course = _slugify(metadata.course_name)
     lecture_segment = (
-        f"{metadata.lecture_date.isoformat()}-lecture-{metadata.lecture_number}"
+        f"{metadata.lecture_on.isoformat()}-lecture-{metadata.lecture_number}"
     )
     safe_filename = _slugify(filename or "uploaded.csv", allow_period=True)
     return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))

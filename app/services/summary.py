@@ -88,28 +88,16 @@ def _populate_survey_summary(
 ) -> None:
     score_fields = {
         "score_overall_satisfaction": models.SurveyResponse.score_satisfaction_overall,
-        "score_content_volume": models.SurveyResponse.score_satisfaction_content_volume,
-        "score_content_understanding": models.SurveyResponse.score_satisfaction_content_understanding,
-        "score_content_announcement": models.SurveyResponse.score_satisfaction_content_announcement,
-        "score_instructor_overall": models.SurveyResponse.score_satisfaction_instructor_overall,
-        "score_instructor_time": func.coalesce(
-            models.SurveyResponse.score_instructor_time,
-            models.SurveyResponse.score_satisfaction_instructor_efficiency,
-        ),
-        "score_instructor_qa": func.coalesce(
-            models.SurveyResponse.score_instructor_qa,
-            models.SurveyResponse.score_satisfaction_instructor_response,
-        ),
-        "score_instructor_speaking": func.coalesce(
-            models.SurveyResponse.score_instructor_speaking,
-            models.SurveyResponse.score_satisfaction_instructor_clarity,
-        ),
+        "score_content_volume": models.SurveyResponse.score_content_volume,
+        "score_content_understanding": models.SurveyResponse.score_content_understanding,
+        "score_content_announcement": models.SurveyResponse.score_content_announcement,
+        "score_instructor_overall": models.SurveyResponse.score_instructor_overall,
+        "score_instructor_time": models.SurveyResponse.score_instructor_time,
+        "score_instructor_qa": models.SurveyResponse.score_instructor_qa,
+        "score_instructor_speaking": models.SurveyResponse.score_instructor_speaking,
         "score_self_preparation": models.SurveyResponse.score_self_preparation,
         "score_self_motivation": models.SurveyResponse.score_self_motivation,
-        "score_self_future": func.coalesce(
-            models.SurveyResponse.score_self_future,
-            models.SurveyResponse.score_self_applicability,
-        ),
+        "score_self_future": models.SurveyResponse.score_self_future,
     }
 
     aggregates = (
@@ -177,7 +165,7 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment == "positive", rc.llm_sentiment == "ポジティブ"),
+                        or_(rc.llm_sentiment_type == "positive", rc.llm_sentiment_type == "ポジティブ"),
                         1,
                     ),
                     else_=0,
@@ -186,7 +174,7 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment == "negative", rc.llm_sentiment == "ネガティブ"),
+                        or_(rc.llm_sentiment_type == "negative", rc.llm_sentiment_type == "ネガティブ"),
                         1,
                     ),
                     else_=0,
@@ -196,9 +184,9 @@ def _refresh_comment_summary(
                 case(
                     (
                         or_(
-                            rc.llm_sentiment == "neutral",
-                            rc.llm_sentiment == "ニュートラル",
-                            rc.llm_sentiment.is_(None),
+                            rc.llm_sentiment_type == "neutral",
+                            rc.llm_sentiment_type == "ニュートラル",
+                            rc.llm_sentiment_type.is_(None),
                         ),
                         1,
                     ),
@@ -362,13 +350,10 @@ def _populate_score_distributions(
         return
     score_columns = [
         "score_satisfaction_overall",
-        "score_satisfaction_content_volume",
-        "score_satisfaction_content_understanding",
-        "score_satisfaction_content_announcement",
-        "score_satisfaction_instructor_overall",
-        "score_satisfaction_instructor_efficiency",
-        "score_satisfaction_instructor_response",
-        "score_satisfaction_instructor_clarity",
+        "score_content_volume",
+        "score_content_understanding",
+        "score_content_announcement",
+        "score_instructor_overall",
         "score_instructor_time",
         "score_instructor_qa",
         "score_instructor_speaking",

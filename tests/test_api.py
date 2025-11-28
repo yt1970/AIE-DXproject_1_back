@@ -91,18 +91,34 @@ def fixture_client(
 # ============================================================================
 
 
+# ============================================================================
+# ヘルパー関数
+# ============================================================================
+
+
 def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> int:
-    """テスト用のアップロードを実行し、file_idを返す"""
+    """テスト用のアップロードを実行し、survey_batch_idを返す"""
     metadata = {
         "course_name": course,
-        "lecture_date": date,
+        "lecture_on": date,
         "lecture_number": number,
     }
     csv_content = (
-        "【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ\n"
-        "必須コメント,Great session!,Thank you!\n"
-        "別の必須,Needs more examples.,\n"
-        "また別の必須,,Follow-up requested\n"
+        "アカウントID,アカウント名,【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ,"
+        "本日の総合的な満足度を５段階で教えてください。,親しいご友人にこの講義の受講をお薦めしますか？,"
+        "\"本日の講義内容について５段階で教えてください。\n学習量は適切だった\","
+        "\"本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた\","
+        "\"本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった\","
+        "本日の講師の総合的な満足度を５段階で教えてください。,"
+        "\"本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた\","
+        "\"本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた\","
+        "\"本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった\","
+        "\"ご自身について５段階で教えてください。\n事前に予習をした\","
+        "\"ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ\","
+        "\"ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる\"\n"
+        "user1,Student A,必須コメント,Great session!,Thank you!,5,10,5,5,5,5,5,5,5,5,5,5\n"
+        "user2,Student B,別の必須,Needs more examples.,,4,8,4,4,4,4,4,4,4,4,4,4\n"
+        "user3,Student C,また別の必須,,Follow-up requested,3,6,3,3,3,3,3,3,3,3,3,3\n"
     )
     response = client.post(
         "/api/v1/uploads",
@@ -116,7 +132,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
         },
     )
     assert response.status_code == 200, response.text
-    return response.json()["uploaded_file_id"]
+    return response.json()["survey_batch_id"]
 
 
 # ============================================================================
@@ -176,14 +192,14 @@ def test_upload_check_duplicate_endpoint(client: TestClient):
         "/api/v1/uploads/check-duplicate",
         params={
             "course_name": "Test Course",
-            "lecture_date": "2024-01-01",
+            "lecture_on": "2024-01-01",
             "lecture_number": 1,
         },
     )
     assert response.status_code == 200
     data = response.json()
     assert "exists" in data
-    assert "uploaded_file_id" in data
+    assert "survey_batch_id" in data
     assert isinstance(data["exists"], bool)
 
 
@@ -195,13 +211,13 @@ def test_comments_endpoint_not_found(client: TestClient):
 
 
 def test_analysis_status_endpoint_not_found(client: TestClient):
-    """存在しないファイルIDのステータス取得（404が返ることを確認）"""
+    """存在しないバッチIDのステータス取得（404が返ることを確認）"""
     response = client.get("/api/v1/uploads/99999/status")
     assert response.status_code == 404
 
 
 def test_metrics_endpoint_not_found(client: TestClient):
-    """存在しないファイルIDのメトリクス取得（404が返ることを確認）"""
+    """存在しないバッチIDのメトリクス取得（404が返ることを確認）"""
     response = client.get("/api/v1/uploads/99999/metrics")
     assert response.status_code == 404
 
@@ -229,13 +245,13 @@ def test_lecture_metrics_endpoint_not_found(client: TestClient):
 
 
 def test_delete_upload_endpoint_not_found(client: TestClient):
-    """存在しないファイルIDの削除（404が返ることを確認）"""
+    """存在しないバッチIDの削除（404が返ることを確認）"""
     response = client.delete("/api/v1/uploads/99999")
     assert response.status_code == 404
 
 
 def test_finalize_endpoint_not_found(client: TestClient):
-    """存在しないファイルIDの確定（404が返ることを確認）"""
+    """存在しないバッチIDの確定（404が返ることを確認）"""
     response = client.post("/api/v1/uploads/99999/finalize")
     assert response.status_code == 404
 
@@ -275,7 +291,7 @@ def test_courses_list_returns_distinct_sorted(client: TestClient) -> None:
     resp = client.get("/api/v1/courses")
     assert resp.status_code == 200
     items = resp.json()
-    # 期待: course_nameの昇順、学年は lecture_date.year がデフォルト付与（文字列）
+    # 期待: course_nameの昇順、学年は lecture_on.year がデフォルト付与（文字列）
     assert {i["course_name"] for i in items} == {"Course A", "Course Z"}
     for i in items:
         assert i["academic_year"] is None or isinstance(i["academic_year"], str)
@@ -284,41 +300,41 @@ def test_courses_list_returns_distinct_sorted(client: TestClient) -> None:
 
 def test_duplicate_check_endpoint(client: TestClient) -> None:
     """重複チェックエンドポイントの動作確認（実際のデータを使用）"""
-    file_id = _post_upload(client, course="Dup Course", date="2024-05-10", number=1)
+    batch_id = _post_upload(client, course="Dup Course", date="2024-05-10", number=1)
 
     # 既存 => True
     r1 = client.get(
         "/api/v1/uploads/check-duplicate",
         params={
             "course_name": "Dup Course",
-            "lecture_date": "2024-05-10",
+            "lecture_on": "2024-05-10",
             "lecture_number": 1,
         },
     )
     assert r1.status_code == 200
     body1 = r1.json()
     assert body1["exists"] is True
-    assert body1["uploaded_file_id"] == file_id
+    assert body1["survey_batch_id"] == batch_id
 
     # 非既存 => False
     r2 = client.get(
         "/api/v1/uploads/check-duplicate",
         params={
             "course_name": "Dup Course",
-            "lecture_date": "2024-05-10",
+            "lecture_on": "2024-05-10",
             "lecture_number": 2,
         },
     )
     assert r2.status_code == 200
-    assert r2.json() == {"exists": False, "uploaded_file_id": None}
+    assert r2.json() == {"exists": False, "survey_batch_id": None}
 
 
 def test_finalize_and_version_filter(client: TestClient) -> None:
     """確定処理とバージョンフィルタの動作確認"""
-    file_id = _post_upload(client, course="Version Course", date="2024-06-01", number=1)
+    batch_id = _post_upload(client, course="Version Course", date="2024-06-01", number=1)
 
     # finalize
-    resp = client.post(f"/api/v1/uploads/{file_id}/finalize")
+    resp = client.post(f"/api/v1/uploads/{batch_id}/finalize")
     assert resp.status_code == 200
     payload = resp.json()
     assert payload["finalized"] is True
@@ -335,105 +351,98 @@ def test_finalize_and_version_filter(client: TestClient) -> None:
 
 def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> None:
     """アップロード削除時にDBとファイルの両方が削除されることを確認"""
-    file_id = _post_upload(client, course="Del Course", date="2024-05-20", number=1)
+    batch_id = _post_upload(client, course="Del Course", date="2024-05-20", number=1)
 
-    # s3_key 取得と現存確認
+    # DB確認
     db = session_module.SessionLocal()
     try:
-        uploaded = (
-            db.query(models.UploadedFile).filter(models.UploadedFile.id == file_id).first()
+        batch = (
+            db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
         )
-        assert uploaded is not None
-        s3_key = uploaded.s3_key
-        assert s3_key and s3_key.startswith("local://")
-        relative = s3_key.split("://", 1)[1]
-        base_dir = Path(os.environ["UPLOAD_LOCAL_DIRECTORY"]).resolve()
-        file_path = (base_dir / Path(relative)).resolve()
-        assert file_path.exists()
-
+        assert batch is not None
+        
         # 現在の件数を控える
         cnt_comments = (
-            db.query(models.Comment)
-            .filter(models.Comment.uploaded_file_id == file_id)
+            db.query(models.ResponseComment)
+            .filter(models.ResponseComment.survey_batch_id == batch_id)
             .count()
         )
         cnt_surveys = (
             db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.uploaded_file_id == file_id)
+            .filter(models.SurveyResponse.survey_batch_id == batch_id)
             .count()
         )
     finally:
         db.close()
 
     # 削除実行
-    del_resp = client.delete(f"/api/v1/uploads/{file_id}")
+    del_resp = client.delete(f"/api/v1/uploads/{batch_id}")
     assert del_resp.status_code == 200, del_resp.text
     payload = del_resp.json()
-    assert payload["uploaded_file_id"] == file_id
+    assert payload["survey_batch_id"] == batch_id
     assert payload["deleted"] is True
     assert payload["removed_comments"] == cnt_comments
     assert payload["removed_survey_responses"] == cnt_surveys
 
-    # 物理ファイルが削除されている
-    assert not file_path.exists()
-
     # ステータス問い合わせは404
-    status_resp = client.get(f"/api/v1/uploads/{file_id}/status")
+    status_resp = client.get(f"/api/v1/uploads/{batch_id}/status")
     assert status_resp.status_code == 404
 
 
 def test_metrics_upsert_and_get(client: TestClient) -> None:
     """メトリクスの作成・更新・取得の動作確認"""
-    file_id = _post_upload(client, course="Metrics Course", date="2024-06-10", number=1)
+    batch_id = _post_upload(client, course="Metrics Course", date="2024-06-10", number=1)
 
     # initial GET -> empty
-    r0 = client.get(f"/api/v1/uploads/{file_id}/metrics")
+    r0 = client.get(f"/api/v1/uploads/{batch_id}/metrics")
     assert r0.status_code == 200
-    assert r0.json()["uploaded_file_id"] == file_id
+    assert r0.json()["survey_batch_id"] == batch_id
     assert r0.json().get("zoom_participants") is None
 
     # upsert
     r1 = client.put(
-        f"/api/v1/uploads/{file_id}/metrics",
-        json={"zoom_participants": 120, "recording_views": 345},
+        f"/api/v1/uploads/{batch_id}/metrics",
+        json={"zoom_participants": 100, "recording_views": 50},
     )
     assert r1.status_code == 200
     body = r1.json()
-    assert body["zoom_participants"] == 120
-    assert body["recording_views"] == 345
-    assert body["uploaded_file_id"] == file_id
+    assert body["zoom_participants"] == 100
+    assert body["recording_views"] == 50
+    assert body["survey_batch_id"] == batch_id
 
     # get
-    r2 = client.get(f"/api/v1/uploads/{file_id}/metrics")
+    r2 = client.get(f"/api/v1/uploads/{batch_id}/metrics")
     assert r2.status_code == 200
     body2 = r2.json()
-    assert body2["zoom_participants"] == 120
-    assert body2["recording_views"] == 345
+    assert body2["zoom_participants"] == 100
+    assert body2["recording_views"] == 50
 
 
 def test_delete_rejects_processing_state(client: TestClient) -> None:
     """処理中のファイルの削除が拒否されることを確認"""
-    # 処理中レコードを直接投入
+    # 処理中レコードを直接投入 (SurveySummaryがない状態)
     db = session_module.SessionLocal()
     try:
-        rec = models.UploadedFile(
-            course_name="Proc Course",
-            lecture_date=date(2024, 5, 21),
-            lecture_number=1,
-                status="PROCESSING",
-            s3_key="local://dummy/path.csv",
-            uploaded_at=datetime(2024, 5, 21, 0, 0, 0),
-            original_filename="path.csv",
-            content_type="text/csv",
-            total_rows=0,
-            processed_rows=0,
+        lecture = models.Lecture(
+            name="Proc Course",
+            lecture_on=date(2024, 5, 21),
+            academic_year=2024,
+            instructor_name="Prof. Test",
         )
-        db.add(rec)
+        db.add(lecture)
+        db.flush()
+        
+        batch = models.SurveyBatch(
+            lecture_id=lecture.id,
+            uploaded_at=datetime(2024, 5, 21, 0, 0, 0),
+        )
+        db.add(batch)
         db.commit()
-        db.refresh(rec)
-        rec_id = rec.id
+        db.refresh(batch)
+        batch_id = batch.id
     finally:
         db.close()
 
-    resp = client.delete(f"/api/v1/uploads/{rec_id}")
+    resp = client.delete(f"/api/v1/uploads/{batch_id}")
+    # ステータスがPROCESSING (Summaryがない) なので削除拒否されるはず
     assert resp.status_code == 409

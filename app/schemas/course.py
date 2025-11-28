@@ -15,7 +15,7 @@ class LectureInfo(BaseModel):
     name: Optional[str] = None
     session: Optional[str] = None
     instructor_name: Optional[str] = None
-    lecture_date: Optional[date] = None
+    lecture_on: Optional[date] = None
 
 
 class LectureCreate(BaseModel):
