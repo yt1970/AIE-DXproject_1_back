@@ -138,6 +138,7 @@ def analyze_and_store_comments(
                 llm_is_abusive=analysis_result.risk_level_normalized
                 == models.RiskLevelType.flag,
                 is_analyzed=True,
+                analysis_version="preliminary",
             )
 
             if debug_logs_enabled:

@@ -50,10 +50,6 @@ def upgrade() -> None:
                autoincrement=True)
         batch_op.drop_column('analysis_version')
 
-    # Now drop the tables after FK columns are removed
-    op.drop_table('uploaded_files')
-    op.drop_table('lecture_metrics')
-
     with op.batch_alter_table('score_distributions', schema=None) as batch_op:
         batch_op.alter_column('id',
                existing_type=sa.BIGINT(),
@@ -67,7 +63,6 @@ def upgrade() -> None:
                type_=sa.BigInteger().with_variant(sa.Integer(), 'sqlite'),
                existing_nullable=False,
                autoincrement=True)
-        batch_op.drop_constraint(None, type_='foreignkey')
         batch_op.drop_column('processing_started_at')
         batch_op.drop_column('total_responses')
         batch_op.drop_column('lecture_date')
@@ -87,7 +82,6 @@ def upgrade() -> None:
                type_=sa.BigInteger().with_variant(sa.Integer(), 'sqlite'),
                existing_nullable=False,
                autoincrement=True)
-        batch_op.drop_constraint(None, type_='foreignkey')
         batch_op.drop_column('account_name')
         batch_op.drop_column('row_index')
         batch_op.drop_column('uploaded_file_id')
@@ -121,7 +115,12 @@ def downgrade() -> None:
         batch_op.add_column(sa.Column('uploaded_file_id', sa.BIGINT(), nullable=False))
         batch_op.add_column(sa.Column('row_index', sa.INTEGER(), nullable=True))
         batch_op.add_column(sa.Column('account_name', sa.VARCHAR(length=255), nullable=True))
-        batch_op.create_foreign_key(None, 'uploaded_files', ['uploaded_file_id'], ['id'])
+        batch_op.create_foreign_key(
+            'fk_survey_responses_uploaded_file_id',
+            'uploaded_files',
+            ['uploaded_file_id'],
+            ['id'],
+        )
         batch_op.alter_column('id',
                existing_type=sa.BigInteger().with_variant(sa.Integer(), 'sqlite'),
                type_=sa.BIGINT(),
@@ -141,7 +140,12 @@ def downgrade() -> None:
         batch_op.add_column(sa.Column('lecture_date', sa.DATE(), nullable=False))
         batch_op.add_column(sa.Column('total_responses', sa.INTEGER(), nullable=True))
         batch_op.add_column(sa.Column('processing_started_at', sa.DATETIME(), nullable=True))
-        batch_op.create_foreign_key(None, 'uploaded_files', ['uploaded_file_id'], ['id'])
+        batch_op.create_foreign_key(
+            'fk_survey_batches_uploaded_file_id',
+            'uploaded_files',
+            ['uploaded_file_id'],
+            ['id'],
+        )
         batch_op.alter_column('id',
                existing_type=sa.BigInteger().with_variant(sa.Integer(), 'sqlite'),
                type_=sa.BIGINT(),
@@ -167,8 +171,18 @@ def downgrade() -> None:
         batch_op.add_column(sa.Column('llm_summary', sa.TEXT(), nullable=True))
         batch_op.add_column(sa.Column('is_important', sa.INTEGER(), nullable=True))
         batch_op.add_column(sa.Column('account_id', sa.VARCHAR(length=255), nullable=True))
-        batch_op.create_foreign_key(None, 'uploaded_files', ['uploaded_file_id'], ['id'])
-        batch_op.create_foreign_key(None, 'survey_batches', ['survey_batch_id'], ['id'])
+        batch_op.create_foreign_key(
+            'fk_response_comments_uploaded_file_id',
+            'uploaded_files',
+            ['uploaded_file_id'],
+            ['id'],
+        )
+        batch_op.create_foreign_key(
+            'fk_response_comments_survey_batch_id',
+            'survey_batches',
+            ['survey_batch_id'],
+            ['id'],
+        )
         batch_op.alter_column('id',
                existing_type=sa.BigInteger().with_variant(sa.Integer(), 'sqlite'),
                type_=sa.BIGINT(),
@@ -183,34 +197,4 @@ def downgrade() -> None:
                existing_nullable=False,
                autoincrement=True)
 
-    op.create_table('lecture_metrics',
-    sa.Column('id', sa.INTEGER(), nullable=False),
-    sa.Column('uploaded_file_id', sa.BIGINT(), nullable=False),
-    sa.Column('updated_at', sa.DATETIME(), nullable=True),
-    sa.Column('zoom_participant_count', sa.INTEGER(), nullable=True),
-    sa.Column('recording_view_count', sa.INTEGER(), nullable=True),
-    sa.ForeignKeyConstraint(['uploaded_file_id'], ['uploaded_files.id'], ),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('uploaded_file_id')
-    )
-    op.create_table('uploaded_files',
-    sa.Column('id', sa.INTEGER(), nullable=False),
-    sa.Column('lecture_date', sa.DATE(), nullable=False),
-    sa.Column('course_name', sa.VARCHAR(length=255), nullable=False),
-    sa.Column('lecture_number', sa.INTEGER(), nullable=False),
-    sa.Column('academic_year', sa.VARCHAR(length=10), nullable=True),
-    sa.Column('period', sa.VARCHAR(length=100), nullable=True),
-    sa.Column('status', sa.VARCHAR(length=50), nullable=False),
-    sa.Column('s3_key', sa.VARCHAR(length=1024), nullable=False),
-    sa.Column('uploaded_at', sa.DATETIME(), nullable=True),
-    sa.Column('total_rows', sa.INTEGER(), nullable=True),
-    sa.Column('processed_rows', sa.INTEGER(), nullable=True),
-    sa.Column('lecture_id', sa.INTEGER(), nullable=True),
-    sa.Column('processing_started_at', sa.DATETIME(), nullable=True),
-    sa.Column('processing_completed_at', sa.DATETIME(), nullable=True),
-    sa.Column('error_message', sa.TEXT(), nullable=True),
-    sa.Column('finalized_at', sa.DATETIME(), nullable=True),
-    sa.ForeignKeyConstraint(['lecture_id'], ['lectures.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
     # ### end Alembic commands ###

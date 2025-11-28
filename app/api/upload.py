@@ -5,9 +5,11 @@ import logging
 from datetime import UTC, date, datetime
 from typing import Annotated, Optional
 
+from sqlalchemy import select
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -162,11 +164,23 @@ def finalize_analysis(
         )
     
     # バッチタイプを確定版に更新
-    survey_batch.batch_type = 'confirmed'
+    survey_batch.batch_type = "confirmed"
     # survey_batch.finalized_at = datetime.now(UTC) # モデルにないのでコメントアウト
-    
-    # 集計の再計算などが必要ならここで実施
-    # compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
+
+    response_ids_subq = select(models.SurveyResponse.id).where(
+        models.SurveyResponse.survey_batch_id == survey_batch_id
+    )
+
+    updated_comments = (
+        db.query(models.ResponseComment)
+        .filter(models.ResponseComment.response_id.in_(response_ids_subq))
+        .update(
+            {models.ResponseComment.analysis_version: "final"},
+            synchronize_session=False,
+        )
+    )
+
+    compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
     
     db.add(survey_batch)
     db.commit()
@@ -174,6 +188,7 @@ def finalize_analysis(
     return {
         "survey_batch_id": survey_batch_id,
         "finalized": True,
+        "updated_comments": updated_comments,
     }
 
 
