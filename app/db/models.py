@@ -135,6 +135,7 @@ class ResponseComment(Base):
     llm_importance_level = Column(String(10)) # high, medium, low
     llm_is_abusive = Column(Boolean, default=False)
     is_analyzed = Column(Boolean, default=False)
+    analysis_version = Column(String(20))  # preliminary, final
 
     # Relationships
     response = relationship("SurveyResponse", back_populates="response_comments")
@@ -146,6 +147,7 @@ class SurveySummary(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
+    analysis_version = Column(String(20), nullable=False, default="preliminary")  # preliminary, final
     response_count = Column(Integer, nullable=False)
     
     nps = Column(DECIMAL(5, 2))
@@ -192,6 +194,7 @@ class CommentSummary(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
+    analysis_version = Column(String(20), nullable=False, default="preliminary")  # preliminary, final
     analysis_type = Column(String(20), nullable=False) # sentiment/category
     label = Column(String(50), nullable=False)
     count = Column(Integer, nullable=False)

@@ -2,23 +2,7 @@
 
 AIE-DXプロジェクトのRESTful APIエンドポイント一覧です。
 
-## ベースURL
-
-- **開発環境**: `http://localhost:8000`
-- **本番環境**: （デプロイ先URLに応じて変更）
-
-全てのAPIエンドポイントは `/api/v1` プレフィックスを持ちます。
-
-## Swagger UI
-
-インタラクティブなAPI ドキュメントは以下で確認できます：
-
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
 ## エンドポイント一覧
-
-### アップロード
 
 #### CSVファイルアップロード
 ```

@@ -35,7 +35,7 @@ def upgrade() -> None:
         batch_op.alter_column('session',
                existing_type=sa.String(length=50),
                nullable=False)
-        batch_op.alter_column('lecture_date',
+        batch_op.alter_column('lecture_on',
                existing_type=sa.Date(),
                nullable=False)
 
@@ -141,7 +141,7 @@ def downgrade() -> None:
 
     # Revert lectures table
     with op.batch_alter_table('lectures', schema=None) as batch_op:
-        batch_op.alter_column('lecture_date',
+        batch_op.alter_column('lecture_on',
                existing_type=sa.Date(),
                nullable=True)
         batch_op.alter_column('session',
