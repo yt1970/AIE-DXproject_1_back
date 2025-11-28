@@ -22,6 +22,7 @@ LLM_ANALYSIS_TARGET_PREFIX = "（任意）"
 COMMENT_SAVE_TARGET_PREFIXES = ("（任意）", "【必須】")
 ACCOUNT_ID_KEYS = ["アカウントID", "account_id", "アカウント ID"]
 ACCOUNT_NAME_KEYS = ["アカウント名", "account_name", "アカウント 名"]
+STUDENT_ATTRIBUTE_KEYS = ["受講生の属性", "受講生属性", "student_attribute"]
 
 
 class CsvValidationError(ValueError):
@@ -65,7 +66,7 @@ def analyze_and_store_comments(
         "ご自身について５段階で教えてください。\n事前に予習をした": "score_self_preparation",
         "ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ": "score_self_motivation",
         "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる": "score_self_applicability",
-        "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_to_friend",
+        "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_friend",
     }
 
     for row_index, row in enumerate(csv_reader, start=1):
@@ -75,6 +76,9 @@ def analyze_and_store_comments(
 
         account_id = _get_value_from_keys(row, ACCOUNT_ID_KEYS, debug_logs_enabled)
         account_name = _get_value_from_keys(row, ACCOUNT_NAME_KEYS, debug_logs_enabled)
+        student_attribute = _get_value_from_keys(
+            row, STUDENT_ATTRIBUTE_KEYS, debug_logs_enabled
+        )
 
         if debug_logs_enabled:
             logger.debug(
@@ -83,15 +87,39 @@ def analyze_and_store_comments(
 
         # 数値評価を1行1件でSurveyResponseに保存
         survey_response_data = {
-            "file_id": file_record.file_id,
+            "uploaded_file_id": file_record.id,
             "survey_batch_id": survey_batch.id,
             "account_id": account_id,
             "account_name": account_name,
+            "student_attribute": student_attribute or "ALL",
             "row_index": row_index,
         }
         for col_name, attr_name in score_column_map.items():
             if col_name in row and row[col_name] and row[col_name].isdigit():
                 survey_response_data[attr_name] = int(row[col_name])
+
+        # 既存のカラム名に加え、新設計の別名にも値をコピーする
+        # instructor効率 -> time, response -> qa, clarity -> speaking
+        if "score_satisfaction_instructor_efficiency" in survey_response_data:
+            survey_response_data.setdefault(
+                "score_instructor_time",
+                survey_response_data["score_satisfaction_instructor_efficiency"],
+            )
+        if "score_satisfaction_instructor_response" in survey_response_data:
+            survey_response_data.setdefault(
+                "score_instructor_qa",
+                survey_response_data["score_satisfaction_instructor_response"],
+            )
+        if "score_satisfaction_instructor_clarity" in survey_response_data:
+            survey_response_data.setdefault(
+                "score_instructor_speaking",
+                survey_response_data["score_satisfaction_instructor_clarity"],
+            )
+        if "score_self_applicability" in survey_response_data:
+            survey_response_data.setdefault(
+                "score_self_future", survey_response_data["score_self_applicability"]
+            )
+        # score_recommend_friendをそのまま保持
 
         survey_response_record = models.SurveyResponse(**survey_response_data)
         db.add(survey_response_record)
@@ -130,11 +158,12 @@ def analyze_and_store_comments(
 
             comment_to_add = models.ResponseComment(
                 survey_response_id=survey_response_record.id,
-                file_id=file_record.file_id,
+                uploaded_file_id=file_record.id,
                 survey_batch_id=survey_batch.id,
                 account_id=account_id,
                 account_name=account_name,
                 question_text=column_name,
+                question_type=column_name,
                 comment_text=comment_text,
                 llm_category=analysis_result.category_normalized.value,
                 llm_sentiment=(
@@ -146,9 +175,12 @@ def analyze_and_store_comments(
                 llm_importance_level=analysis_result.importance_normalized.value,
                 llm_importance_score=analysis_result.importance_score,
                 llm_risk_level=analysis_result.risk_level_normalized.value,
+                llm_is_abusive=analysis_result.risk_level_normalized
+                == models.RiskLevelType.flag,
                 processed_at=datetime.now(UTC),
                 analysis_version="preliminary",
                 is_important=is_important,
+                is_analyzed=True,
             )
 
             if debug_logs_enabled:

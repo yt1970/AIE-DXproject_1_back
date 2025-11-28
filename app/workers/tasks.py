@@ -44,8 +44,8 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
     try:
         file_record = session.get(models.UploadedFile, file_id)
         if not file_record:
-            logger.warning("UploadedFile not found for file_id=%s", file_id)
-            return {"file_id": file_id, "status": "missing"}
+            logger.warning("UploadedFile not found for uploaded_file_id=%s", file_id)
+            return {"uploaded_file_id": file_id, "status": "missing"}
 
         file_record.status = PROCESSING_STATUS
         file_record.processing_started_at = datetime.now(UTC)
@@ -58,12 +58,12 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
         # SurveyBatch を作成または取得
         survey_batch = (
             session.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.file_id == file_id)
+            .filter(models.SurveyBatch.uploaded_file_id == file_id)
             .first()
         )
         if not survey_batch:
             survey_batch = models.SurveyBatch(
-                file_id=file_record.file_id,
+                uploaded_file_id=file_record.id,
                 lecture_id=file_record.lecture_id,
                 course_name=file_record.course_name,
                 lecture_date=file_record.lecture_date,
@@ -71,7 +71,7 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
                 academic_year=file_record.academic_year,
                 period=file_record.period,
                 status=PROCESSING_STATUS,
-                upload_timestamp=file_record.upload_timestamp,
+                uploaded_at=file_record.uploaded_at,
                 processing_started_at=datetime.now(UTC),
                 error_message=None,
             )
@@ -114,13 +114,13 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
         session.commit()
 
         logger.info(
-            "Completed analysis for file_id=%s (processed=%s)",
+            "Completed analysis for uploaded_file_id=%s (processed=%s)",
             file_id,
             processed_comments,
         )
 
         return {
-            "file_id": file_id,
+            "uploaded_file_id": file_id,
             "batch_id": survey_batch.id,
             "status": COMPLETED_STATUS,
             "total_comments": total_comments,
@@ -130,7 +130,7 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
 
     except CsvValidationError as exc:
         session.rollback()
-        logger.exception("Background processing failed for file_id=%s", file_id)
+        logger.exception("Background processing failed for uploaded_file_id=%s", file_id)
         _mark_failure(
             session, file_record, survey_batch=survey_batch, error_message=str(exc)
         )
@@ -144,7 +144,7 @@ def process_uploaded_file(self: Task, *, file_id: int) -> dict:
             else self.app.conf.task_max_retries
         )
         logger.warning(
-            "StorageError on processing file_id=%s (attempt %s/%s): %s",
+            "StorageError on processing uploaded_file_id=%s (attempt %s/%s): %s",
             file_id,
             retries + 1,
             max_retries,
@@ -192,5 +192,5 @@ def _mark_failure(
     except Exception:  # pragma: no cover - best-effort logging
         session.rollback()
         logger.error(
-            "Failed to persist failure status for file_id=%s", file_record.file_id
+            "Failed to persist failure status for uploaded_file_id=%s", file_record.id
         )

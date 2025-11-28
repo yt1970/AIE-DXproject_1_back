@@ -87,7 +87,7 @@ class DummySession:
 
 def _make_uploaded_file() -> models.UploadedFile:
     return models.UploadedFile(
-        file_id=1,
+        id=1,
         course_name="Intro to Robotics",
         lecture_date=date(2024, 1, 1),
         lecture_number=1,
@@ -95,7 +95,7 @@ def _make_uploaded_file() -> models.UploadedFile:
         period="Q1",
         status="QUEUED",
         s3_key="local://uploads/file.csv",
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
         lecture_id=42,
     )
 
@@ -103,7 +103,7 @@ def _make_uploaded_file() -> models.UploadedFile:
 def _make_survey_batch(file_record: models.UploadedFile) -> models.SurveyBatch:
     batch = models.SurveyBatch(
         id=99,
-        file_id=file_record.file_id,
+        uploaded_file_id=file_record.id,
         lecture_id=file_record.lecture_id,
         course_name=file_record.course_name,
         lecture_date=file_record.lecture_date,
@@ -111,7 +111,7 @@ def _make_survey_batch(file_record: models.UploadedFile) -> models.SurveyBatch:
         academic_year=file_record.academic_year,
         period=file_record.period,
         status="QUEUED",
-        upload_timestamp=file_record.upload_timestamp,
+        uploaded_at=file_record.uploaded_at,
     )
     return batch
 
@@ -137,7 +137,7 @@ def test_process_uploaded_file_returns_missing_when_file_not_found(monkeypatch):
 
     result = tasks.process_uploaded_file.run(file_id=12345)
 
-    assert result == {"file_id": 12345, "status": "missing"}
+    assert result == {"uploaded_file_id": 12345, "status": "missing"}
     assert session.closed
 
 
@@ -157,7 +157,7 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     summary_mock = MagicMock()
     monkeypatch.setattr(tasks, "compute_and_upsert_summaries", summary_mock)
 
-    result = tasks.process_uploaded_file.run(file_id=file_record.file_id)
+    result = tasks.process_uploaded_file.run(file_id=file_record.id)
 
     storage_client.load.assert_called_once_with(uri=file_record.s3_key)
     analyze_mock.assert_called_once()

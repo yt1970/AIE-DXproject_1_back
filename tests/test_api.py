@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Generator
 
 import pytest
+import warnings
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -64,6 +65,17 @@ def fixture_client(
     app = app_main.create_app()
     app.dependency_overrides[session_module.get_db] = override_get_db
 
+    warnings.filterwarnings(
+        "ignore",
+        message="The 'app' shortcut is now deprecated",
+        category=DeprecationWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message="Please use `import python_multipart` instead.",
+        category=PendingDeprecationWarning,
+    )
+
     client = TestClient(app)
     try:
         yield client
@@ -104,7 +116,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
         },
     )
     assert response.status_code == 200, response.text
-    return response.json()["file_id"]
+    return response.json()["uploaded_file_id"]
 
 
 # ============================================================================
@@ -171,7 +183,7 @@ def test_upload_check_duplicate_endpoint(client: TestClient):
     assert response.status_code == 200
     data = response.json()
     assert "exists" in data
-    assert "file_id" in data
+    assert "uploaded_file_id" in data
     assert isinstance(data["exists"], bool)
 
 
@@ -286,7 +298,7 @@ def test_duplicate_check_endpoint(client: TestClient) -> None:
     assert r1.status_code == 200
     body1 = r1.json()
     assert body1["exists"] is True
-    assert body1["file_id"] == file_id
+    assert body1["uploaded_file_id"] == file_id
 
     # 非既存 => False
     r2 = client.get(
@@ -298,7 +310,7 @@ def test_duplicate_check_endpoint(client: TestClient) -> None:
         },
     )
     assert r2.status_code == 200
-    assert r2.json() == {"exists": False, "file_id": None}
+    assert r2.json() == {"exists": False, "uploaded_file_id": None}
 
 
 def test_finalize_and_version_filter(client: TestClient) -> None:
@@ -329,9 +341,7 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
     db = session_module.SessionLocal()
     try:
         uploaded = (
-            db.query(models.UploadedFile)
-            .filter(models.UploadedFile.file_id == file_id)
-            .first()
+            db.query(models.UploadedFile).filter(models.UploadedFile.id == file_id).first()
         )
         assert uploaded is not None
         s3_key = uploaded.s3_key
@@ -343,11 +353,13 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
 
         # 現在の件数を控える
         cnt_comments = (
-            db.query(models.Comment).filter(models.Comment.file_id == file_id).count()
+            db.query(models.Comment)
+            .filter(models.Comment.uploaded_file_id == file_id)
+            .count()
         )
         cnt_surveys = (
             db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.file_id == file_id)
+            .filter(models.SurveyResponse.uploaded_file_id == file_id)
             .count()
         )
     finally:
@@ -357,7 +369,7 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
     del_resp = client.delete(f"/api/v1/uploads/{file_id}")
     assert del_resp.status_code == 200, del_resp.text
     payload = del_resp.json()
-    assert payload["file_id"] == file_id
+    assert payload["uploaded_file_id"] == file_id
     assert payload["deleted"] is True
     assert payload["removed_comments"] == cnt_comments
     assert payload["removed_survey_responses"] == cnt_surveys
@@ -377,7 +389,7 @@ def test_metrics_upsert_and_get(client: TestClient) -> None:
     # initial GET -> empty
     r0 = client.get(f"/api/v1/uploads/{file_id}/metrics")
     assert r0.status_code == 200
-    assert r0.json()["file_id"] == file_id
+    assert r0.json()["uploaded_file_id"] == file_id
     assert r0.json().get("zoom_participants") is None
 
     # upsert
@@ -389,7 +401,7 @@ def test_metrics_upsert_and_get(client: TestClient) -> None:
     body = r1.json()
     assert body["zoom_participants"] == 120
     assert body["recording_views"] == 345
-    assert body["file_id"] == file_id
+    assert body["uploaded_file_id"] == file_id
 
     # get
     r2 = client.get(f"/api/v1/uploads/{file_id}/metrics")
@@ -408,9 +420,9 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
             course_name="Proc Course",
             lecture_date=date(2024, 5, 21),
             lecture_number=1,
-            status="PROCESSING",
+                status="PROCESSING",
             s3_key="local://dummy/path.csv",
-            upload_timestamp=datetime(2024, 5, 21, 0, 0, 0),
+            uploaded_at=datetime(2024, 5, 21, 0, 0, 0),
             original_filename="path.csv",
             content_type="text/csv",
             total_rows=0,
@@ -419,7 +431,7 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
         db.add(rec)
         db.commit()
         db.refresh(rec)
-        rec_id = rec.file_id
+        rec_id = rec.id
     finally:
         db.close()
 

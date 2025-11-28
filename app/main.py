@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import datetime
 
 from fastapi import FastAPI
@@ -24,21 +25,20 @@ def create_app() -> FastAPI:
     """Creates and configures the FastAPI application instance."""
     config = settings
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup
+        print(f"Application '{app.title}' starting up. ENV: {config.env}")
+        apply_migrations(engine)
+        yield
+        # Shutdown hook placeholder
+
     app = FastAPI(
         title=config.title,
         debug=config.debug,
         version="1.0.0",
+        lifespan=lifespan,
     )
-
-    # ------------------------------------------------------------------
-    # 1. 起動時のイベントハンドラ (DB接続の初期化などを想定)
-    # ------------------------------------------------------------------
-    @app.on_event("startup")
-    async def startup_event():
-        # 実際にはここでDB接続やCeleryワーカーの初期設定を行う
-        print(f"Application '{app.title}' starting up. ENV: {config.env}")
-        # 例: await initialize_database_connection()
-        apply_migrations(engine)
 
     # ------------------------------------------------------------------
     # 2. ヘルスチェックエンドポイント

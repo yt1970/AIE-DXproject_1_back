@@ -10,55 +10,55 @@ from app.schemas.comment import LectureMetricsPayload, LectureMetricsResponse
 router = APIRouter()
 
 
-@router.get("/uploads/{file_id}/metrics", response_model=LectureMetricsResponse)
-def get_metrics(file_id: int, db: Session = Depends(get_db)) -> LectureMetricsResponse:
+@router.get("/uploads/{uploaded_file_id}/metrics", response_model=LectureMetricsResponse)
+def get_metrics(uploaded_file_id: int, db: Session = Depends(get_db)) -> LectureMetricsResponse:
     """Return metrics for a specific uploaded file."""
     uploaded = (
         db.query(models.UploadedFile)
-        .filter(models.UploadedFile.file_id == file_id)
+        .filter(models.UploadedFile.id == uploaded_file_id)
         .first()
     )
     if not uploaded:
-        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+        raise HTTPException(status_code=404, detail=f"File with id {uploaded_file_id} not found")
 
     metrics = (
         db.query(models.LectureMetrics)
-        .filter(models.LectureMetrics.file_id == file_id)
+        .filter(models.LectureMetrics.uploaded_file_id == uploaded_file_id)
         .first()
     )
     if not metrics:
-        return LectureMetricsResponse(file_id=file_id)
+        return LectureMetricsResponse(uploaded_file_id=uploaded_file_id)
 
     return LectureMetricsResponse(
-        file_id=file_id,
+        uploaded_file_id=uploaded_file_id,
         zoom_participants=metrics.zoom_participants,
         recording_views=metrics.recording_views,
         updated_at=metrics.updated_at,
     )
 
 
-@router.put("/uploads/{file_id}/metrics", response_model=LectureMetricsResponse)
+@router.put("/uploads/{uploaded_file_id}/metrics", response_model=LectureMetricsResponse)
 def upsert_metrics(
-    file_id: int,
+    uploaded_file_id: int,
     payload: LectureMetricsPayload,
     db: Session = Depends(get_db),
 ) -> LectureMetricsResponse:
     """Upsert metrics for a specific uploaded file."""
     uploaded = (
         db.query(models.UploadedFile)
-        .filter(models.UploadedFile.file_id == file_id)
+        .filter(models.UploadedFile.id == uploaded_file_id)
         .first()
     )
     if not uploaded:
-        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+        raise HTTPException(status_code=404, detail=f"File with id {uploaded_file_id} not found")
 
     metrics = (
         db.query(models.LectureMetrics)
-        .filter(models.LectureMetrics.file_id == file_id)
+        .filter(models.LectureMetrics.uploaded_file_id == uploaded_file_id)
         .first()
     )
     if not metrics:
-        metrics = models.LectureMetrics(file_id=file_id)
+        metrics = models.LectureMetrics(uploaded_file_id=uploaded_file_id)
 
     metrics.zoom_participants = payload.zoom_participants
     metrics.recording_views = payload.recording_views
@@ -68,7 +68,7 @@ def upsert_metrics(
     db.refresh(metrics)
 
     return LectureMetricsResponse(
-        file_id=file_id,
+        uploaded_file_id=uploaded_file_id,
         zoom_participants=metrics.zoom_participants,
         recording_views=metrics.recording_views,
         updated_at=metrics.updated_at,
@@ -78,12 +78,12 @@ def upsert_metrics(
 def _choose_target_file_for_lecture(db: Session, lecture_id: int) -> int | None:
     """Pick finalized file for lecture or fallback to latest upload in one query."""
     row = (
-        db.query(models.UploadedFile.file_id)
+        db.query(models.UploadedFile.id)
         .filter(models.UploadedFile.lecture_id == lecture_id)
         .order_by(
             models.UploadedFile.finalized_at.is_(None),
             models.UploadedFile.finalized_at.desc(),
-            models.UploadedFile.upload_timestamp.desc(),
+            models.UploadedFile.uploaded_at.desc(),
         )
         .first()
     )
@@ -104,16 +104,16 @@ def get_metrics_by_lecture(
         raise HTTPException(status_code=404, detail="Lecture not found")
     file_id = _choose_target_file_for_lecture(db, lecture_id)
     if file_id is None:
-        return LectureMetricsResponse(file_id=0)
+        return LectureMetricsResponse(uploaded_file_id=0)
     metrics = (
         db.query(models.LectureMetrics)
         .filter(models.LectureMetrics.file_id == file_id)
         .first()
     )
     if not metrics:
-        return LectureMetricsResponse(file_id=file_id)
+        return LectureMetricsResponse(uploaded_file_id=file_id)
     return LectureMetricsResponse(
-        file_id=file_id,
+        uploaded_file_id=file_id,
         zoom_participants=metrics.zoom_participants,
         recording_views=metrics.recording_views,
         updated_at=metrics.updated_at,
@@ -137,11 +137,11 @@ def upsert_metrics_by_lecture(
         )
     metrics = (
         db.query(models.LectureMetrics)
-        .filter(models.LectureMetrics.file_id == file_id)
+        .filter(models.LectureMetrics.uploaded_file_id == file_id)
         .first()
     )
     if not metrics:
-        metrics = models.LectureMetrics(file_id=file_id)
+        metrics = models.LectureMetrics(uploaded_file_id=file_id)
     metrics.zoom_participants = payload.zoom_participants
     metrics.recording_views = payload.recording_views
     metrics.updated_at = datetime.now(UTC)
@@ -149,7 +149,7 @@ def upsert_metrics_by_lecture(
     db.commit()
     db.refresh(metrics)
     return LectureMetricsResponse(
-        file_id=file_id,
+        uploaded_file_id=file_id,
         zoom_participants=metrics.zoom_participants,
         recording_views=metrics.recording_views,
         updated_at=metrics.updated_at,

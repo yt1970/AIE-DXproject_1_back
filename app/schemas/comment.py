@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 # (出力) ファイルアップロード成功時の応答スキーマ
 class UploadResponse(BaseModel):
-    file_id: int
+    uploaded_file_id: int
     status_url: str
     message: str
 
@@ -25,7 +25,7 @@ class UploadRequestMetadata(BaseModel):
 
 # (出力) ステータス確認時の応答スキーマ
 class AnalysisStatusResponse(BaseModel):
-    file_id: int
+    uploaded_file_id: int
     status: str
     total_comments: int
     processed_count: int
@@ -43,6 +43,7 @@ class CommentAnalysisSchema(BaseModel):
     # ユーザー情報をCommentモデルから直接取得する
     account_id: Optional[str] = None
     account_name: Optional[str] = None
+    question_type: Optional[str] = None
     question_text: Optional[str] = None
     comment_text: str
 
@@ -52,6 +53,8 @@ class CommentAnalysisSchema(BaseModel):
     llm_importance_level: Optional[str] = None
     llm_importance_score: Optional[float] = None
     llm_risk_level: Optional[str] = None
+    llm_is_abusive: Optional[bool] = None
+    is_analyzed: Optional[bool] = None
 
     # @computed_fieldを使って、ネストされたリレーションから値を取得する
     @computed_field
@@ -79,12 +82,12 @@ class CommentAnalysisSchema(BaseModel):
 # (出力) 講義重複チェックの応答スキーマ
 class DuplicateCheckResponse(BaseModel):
     exists: bool
-    file_id: Optional[int] = None
+    uploaded_file_id: Optional[int] = None
 
 
 # (出力) アップロード削除APIの応答スキーマ
 class DeleteUploadResponse(BaseModel):
-    file_id: int
+    uploaded_file_id: int
     deleted: bool
     removed_comments: int
     removed_survey_responses: int
@@ -97,5 +100,5 @@ class LectureMetricsPayload(BaseModel):
 
 
 class LectureMetricsResponse(LectureMetricsPayload):
-    file_id: int
+    uploaded_file_id: int
     updated_at: Optional[datetime] = None

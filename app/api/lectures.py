@@ -11,8 +11,10 @@ from app.db.session import get_db
 from app.schemas.course import (
     LectureCategory,
     LectureCreate,
-    LectureInfo,
+    LectureDetailResponse,
+    LectureSummaryResponse,
     LectureUpdate,
+    ScoreDistributionSchema,
 )
 
 router = APIRouter()
@@ -24,7 +26,7 @@ def _normalize_text(value: Optional[str]) -> Optional[str]:
     return value.strip()
 
 
-@router.get("/lectures", response_model=List[LectureInfo])
+@router.get("/lectures", response_model=List[LectureSummaryResponse])
 def list_lectures(
     db: Session = Depends(get_db),
     name: Optional[str] = None,
@@ -54,12 +56,18 @@ def list_lectures(
     sort_exp = sort_col.desc() if sort_order.lower() == "desc" else sort_col.asc()
     lectures = q.order_by(sort_exp).all()
     return [
-        LectureInfo(
+        LectureSummaryResponse(
+            id=lec.id,
             course_name=lec.course_name,
             academic_year=(
                 str(lec.academic_year) if lec.academic_year is not None else None
             ),
             period=lec.period,
+            term=lec.term,
+            name=lec.name or lec.course_name,
+            session=lec.session,
+            instructor_name=lec.instructor_name,
+            lecture_date=lec.lecture_date,
         )
         for lec in lectures
     ]
@@ -103,7 +111,7 @@ def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
     return {"courses": courses, "years": years, "terms": terms}
 
 
-@router.post("/lectures", response_model=LectureInfo)
+@router.post("/lectures", response_model=LectureSummaryResponse)
 def create_lecture(
     payload: LectureCreate, db: Session = Depends(get_db)
 ) -> LectureInfo:
@@ -136,14 +144,20 @@ def create_lecture(
     db.add(lec)
     db.commit()
     db.refresh(lec)
-    return LectureInfo(
+    return LectureSummaryResponse(
+        id=lec.id,
         course_name=lec.course_name,
         academic_year=str(lec.academic_year),
         period=lec.period,
+        term=lec.term,
+        name=lec.name or lec.course_name,
+        session=lec.session,
+        instructor_name=lec.instructor_name,
+        lecture_date=lec.lecture_date,
     )
 
 
-@router.put("/lectures/{lecture_id}", response_model=LectureInfo)
+@router.put("/lectures/{lecture_id}", response_model=LectureSummaryResponse)
 def update_lecture(
     lecture_id: int, payload: LectureUpdate, db: Session = Depends(get_db)
 ) -> LectureInfo:
@@ -183,10 +197,16 @@ def update_lecture(
     db.add(lec)
     db.commit()
     db.refresh(lec)
-    return LectureInfo(
+    return LectureSummaryResponse(
+        id=lec.id,
         course_name=lec.course_name,
         academic_year=str(lec.academic_year),
         period=lec.period,
+        term=lec.term,
+        name=lec.name or lec.course_name,
+        session=lec.session,
+        instructor_name=lec.instructor_name,
+        lecture_date=lec.lecture_date,
     )
 
 
@@ -222,25 +242,25 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
             pass
         removed_comments += (
             db.query(models.Comment)
-            .filter(models.Comment.file_id == f.file_id)
+            .filter(models.Comment.uploaded_file_id == f.id)
             .delete(synchronize_session=False)
             or 0
         )
         removed_survey_responses += (
             db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.file_id == f.file_id)
+            .filter(models.SurveyResponse.uploaded_file_id == f.id)
             .delete(synchronize_session=False)
             or 0
         )
         removed_metrics += (
             db.query(models.LectureMetrics)
-            .filter(models.LectureMetrics.file_id == f.file_id)
+            .filter(models.LectureMetrics.uploaded_file_id == f.id)
             .delete(synchronize_session=False)
             or 0
         )
-        db.query(models.UploadedFile).filter(
-            models.UploadedFile.file_id == f.file_id
-        ).delete(synchronize_session=False)
+        db.query(models.UploadedFile).filter(models.UploadedFile.id == f.id).delete(
+            synchronize_session=False
+        )
     # 最後に講義を削除
     db.query(models.Lecture).filter(models.Lecture.id == lecture_id).delete(
         synchronize_session=False
@@ -254,3 +274,34 @@ def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
         "removed_survey_responses": removed_survey_responses,
         "removed_metrics": removed_metrics,
     }
+
+
+@router.get("/lectures/{lecture_id}", response_model=LectureDetailResponse)
+def get_lecture_detail(lecture_id: int, db: Session = Depends(get_db)) -> LectureDetailResponse:
+    """講義詳細を返す（ScoreDistributionを含む）。"""
+    lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
+    if not lec:
+        raise HTTPException(status_code=404, detail="講義が見つかりません")
+
+    distributions = (
+        db.query(models.ScoreDistribution)
+        .join(models.SurveyBatch, models.ScoreDistribution.survey_batch_id == models.SurveyBatch.id)
+        .filter(models.SurveyBatch.lecture_id == lecture_id)
+        .all()
+    )
+
+    return LectureDetailResponse(
+        id=lec.id,
+        course_name=lec.course_name,
+        academic_year=str(lec.academic_year) if lec.academic_year is not None else None,
+        period=lec.period,
+        term=lec.term,
+        name=lec.name or lec.course_name,
+        session=lec.session,
+        instructor_name=lec.instructor_name,
+        lecture_date=lec.lecture_date,
+        description=lec.description,
+        created_at=lec.created_at,
+        updated_at=lec.updated_at,
+        score_distributions=[ScoreDistributionSchema.model_validate(d) for d in distributions],
+    )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
@@ -27,8 +27,9 @@ def compute_and_upsert_summaries(
     *,
     survey_batch: models.SurveyBatch,
     version: str = "preliminary",
+    student_attribute: str | None = None,
     nps_scale: int = 10,
-) -> Tuple[models.SurveySummary, models.CommentSummary]:
+) -> Tuple[models.SurveySummary, Dict[str, int]]:
     """
     サーベイバッチの集計を計算し、SurveySummary/CommentSummaryをアップサートする。
     """
@@ -39,42 +40,43 @@ def compute_and_upsert_summaries(
         .filter(
             models.SurveySummary.survey_batch_id == survey_batch.id,
             models.SurveySummary.analysis_version == version,
+            models.SurveySummary.student_attribute == (student_attribute or "ALL"),
         )
         .first()
     )
     if not survey_summary:
         survey_summary = models.SurveySummary(
-            survey_batch_id=survey_batch.id, analysis_version=version
+            survey_batch_id=survey_batch.id,
+            analysis_version=version,
+            student_attribute=student_attribute or "ALL",
         )
 
-    comment_summary = (
-        db.query(models.CommentSummary)
-        .filter(
-            models.CommentSummary.survey_batch_id == survey_batch.id,
-            models.CommentSummary.analysis_version == version,
-        )
-        .first()
+    _populate_survey_summary(
+        db,
+        survey_summary,
+        survey_batch.id,
+        nps_scale,
+        student_attribute=student_attribute,
     )
-    if not comment_summary:
-        comment_summary = models.CommentSummary(
-            survey_batch_id=survey_batch.id, analysis_version=version
-        )
-
-    _populate_survey_summary(db, survey_summary, survey_batch.id, nps_scale)
-    _populate_comment_summary(db, comment_summary, survey_batch.id, version)
+    comment_counts = _refresh_comment_summary(
+        db, survey_batch.id, version, student_attribute=student_attribute
+    )
+    _populate_score_distributions(
+        db, survey_batch.id, student_attribute=student_attribute
+    )
     # サマリー間でカウントを揃える
-    survey_summary.comments_count = comment_summary.comments_count or 0
-    survey_summary.important_comments_count = (
-        comment_summary.important_comments_count or 0
+    survey_summary.comments_count = comment_counts.get("comments_count", 0)
+    survey_summary.important_comments_count = comment_counts.get(
+        "important_comments_count", 0
     )
 
     now = datetime.now(UTC)
     survey_summary.updated_at = now
-    comment_summary.updated_at = now
+    if not survey_summary.created_at:
+        survey_summary.created_at = now
 
     db.add(survey_summary)
-    db.add(comment_summary)
-    return survey_summary, comment_summary
+    return survey_summary, comment_counts
 
 
 def _populate_survey_summary(
@@ -82,6 +84,7 @@ def _populate_survey_summary(
     summary: models.SurveySummary,
     survey_batch_id: int,
     nps_scale: int,
+    student_attribute: str | None = None,
 ) -> None:
     score_fields = {
         "score_overall_satisfaction": models.SurveyResponse.score_satisfaction_overall,
@@ -89,12 +92,24 @@ def _populate_survey_summary(
         "score_content_understanding": models.SurveyResponse.score_satisfaction_content_understanding,
         "score_content_announcement": models.SurveyResponse.score_satisfaction_content_announcement,
         "score_instructor_overall": models.SurveyResponse.score_satisfaction_instructor_overall,
-        "score_instructor_time": models.SurveyResponse.score_satisfaction_instructor_efficiency,
-        "score_instructor_qa": models.SurveyResponse.score_satisfaction_instructor_response,
-        "score_instructor_speaking": models.SurveyResponse.score_satisfaction_instructor_clarity,
+        "score_instructor_time": func.coalesce(
+            models.SurveyResponse.score_instructor_time,
+            models.SurveyResponse.score_satisfaction_instructor_efficiency,
+        ),
+        "score_instructor_qa": func.coalesce(
+            models.SurveyResponse.score_instructor_qa,
+            models.SurveyResponse.score_satisfaction_instructor_response,
+        ),
+        "score_instructor_speaking": func.coalesce(
+            models.SurveyResponse.score_instructor_speaking,
+            models.SurveyResponse.score_satisfaction_instructor_clarity,
+        ),
         "score_self_preparation": models.SurveyResponse.score_self_preparation,
         "score_self_motivation": models.SurveyResponse.score_self_motivation,
-        "score_self_future": models.SurveyResponse.score_self_applicability,
+        "score_self_future": func.coalesce(
+            models.SurveyResponse.score_self_future,
+            models.SurveyResponse.score_self_applicability,
+        ),
     }
 
     aggregates = (
@@ -103,6 +118,11 @@ def _populate_survey_summary(
             func.count(models.SurveyResponse.id),
         )
         .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
+        .filter(
+            models.SurveyResponse.student_attribute == student_attribute
+            if student_attribute
+            else True
+        )
         .one()
     )
 
@@ -110,7 +130,7 @@ def _populate_survey_summary(
         setattr(summary, field_name, _maybe_round(value))
 
     responses_count = aggregates[-1]
-    summary.responses_count = int(responses_count) if responses_count is not None else 0
+    summary.response_count = int(responses_count) if responses_count is not None else 0
 
     # NPSの計算
     nps_breakdown = _nps_breakdown_from_db(
@@ -128,47 +148,105 @@ def _populate_survey_summary(
     summary.important_comments_count = summary.important_comments_count or 0
 
 
-def _populate_comment_summary(
+def _refresh_comment_summary(
     db: Session,
-    summary: models.CommentSummary,
     survey_batch_id: int,
     version: str,
-) -> None:
+    student_attribute: str | None = None,
+) -> Dict[str, int]:
+    attr = student_attribute or "ALL"
+    db.query(models.CommentSummary).filter(
+        models.CommentSummary.survey_batch_id == survey_batch_id,
+        models.CommentSummary.analysis_version == version,
+        models.CommentSummary.student_attribute == attr,
+    ).delete(synchronize_session=False)
+
     filters = [models.ResponseComment.survey_batch_id == survey_batch_id]
     vf = _version_filter(version)
     if vf is not None:
         filters.append(vf)
+    query = db.query(models.ResponseComment)
+    if student_attribute:
+        query = query.join(models.ResponseComment.survey_response)
+        filters.append(models.SurveyResponse.student_attribute == student_attribute)
 
     rc = models.ResponseComment
     aggregates = (
-        db.query(
+        query.with_entities(
             func.count(1).label("total_comments"),
-            func.sum(case((rc.llm_sentiment == "positive", 1), else_=0)).label(
-                "sentiment_positive"
-            ),
-            func.sum(case((rc.llm_sentiment == "negative", 1), else_=0)).label(
-                "sentiment_negative"
-            ),
             func.sum(
                 case(
-                    (or_(rc.llm_sentiment == "neutral", rc.llm_sentiment.is_(None)), 1),
+                    (
+                        or_(rc.llm_sentiment == "positive", rc.llm_sentiment == "ポジティブ"),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("sentiment_positive"),
+            func.sum(
+                case(
+                    (
+                        or_(rc.llm_sentiment == "negative", rc.llm_sentiment == "ネガティブ"),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("sentiment_negative"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_sentiment == "neutral",
+                            rc.llm_sentiment == "ニュートラル",
+                            rc.llm_sentiment.is_(None),
+                        ),
+                        1,
+                    ),
                     else_=0,
                 )
             ).label("sentiment_neutral"),
-            func.sum(case((rc.llm_category == "講義内容", 1), else_=0)).label(
-                "category_lecture_content"
-            ),
-            func.sum(case((rc.llm_category == "講義資料", 1), else_=0)).label(
-                "category_lecture_material"
-            ),
-            func.sum(case((rc.llm_category == "運営", 1), else_=0)).label(
-                "category_operations"
-            ),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_category == "content",
+                            rc.llm_category == "講義内容",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("category_content"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_category == "materials",
+                            rc.llm_category == "講義資料",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("category_materials"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_category == "operations",
+                            rc.llm_category == "運営",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("category_operations"),
             func.sum(
                 case(
                     (
                         or_(
                             rc.llm_importance_level == "low",
+                            rc.llm_importance_level == "低",
                             rc.llm_importance_level.is_(None),
                         ),
                         1,
@@ -176,42 +254,170 @@ def _populate_comment_summary(
                     else_=0,
                 )
             ).label("importance_low"),
-            func.sum(case((rc.llm_importance_level == "medium", 1), else_=0)).label(
-                "importance_medium"
-            ),
-            func.sum(case((rc.llm_importance_level == "high", 1), else_=0)).label(
-                "importance_high"
-            ),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_importance_level == "medium",
+                            rc.llm_importance_level == "中",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("importance_medium"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_importance_level == "high",
+                            rc.llm_importance_level == "高",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("importance_high"),
         )
         .filter(*filters)
         .one()
     )
 
-    summary.sentiment_positive = int(aggregates.sentiment_positive or 0)
-    summary.sentiment_negative = int(aggregates.sentiment_negative or 0)
-    summary.sentiment_neutral = int(aggregates.sentiment_neutral or 0)
-
-    summary.category_lecture_content = int(aggregates.category_lecture_content or 0)
-    summary.category_lecture_material = int(aggregates.category_lecture_material or 0)
-    summary.category_operations = int(aggregates.category_operations or 0)
     total_comments = int(aggregates.total_comments or 0)
-    summary.category_other = max(
+    sentiment_counts = {
+        "positive": int(aggregates.sentiment_positive or 0),
+        "negative": int(aggregates.sentiment_negative or 0),
+        "neutral": int(aggregates.sentiment_neutral or 0),
+    }
+    category_counts = {
+        "content": int(aggregates.category_content or 0),
+        "materials": int(aggregates.category_materials or 0),
+        "operations": int(aggregates.category_operations or 0),
+    }
+    category_counts["other"] = max(
         total_comments
-        - summary.category_lecture_content
-        - summary.category_lecture_material
-        - summary.category_operations,
+        - category_counts["content"]
+        - category_counts["materials"]
+        - category_counts["operations"],
         0,
     )
+    importance_counts = {
+        "low": int(aggregates.importance_low or 0),
+        "medium": int(aggregates.importance_medium or 0),
+        "high": int(aggregates.importance_high or 0),
+    }
 
-    summary.importance_low = int(aggregates.importance_low or 0)
-    summary.importance_medium = int(aggregates.importance_medium or 0)
-    summary.importance_high = int(aggregates.importance_high or 0)
-    summary.important_comments_count = (
-        summary.importance_medium + summary.importance_high
+    now = datetime.now(UTC)
+    rows = []
+    for label, value in sentiment_counts.items():
+        rows.append(
+            models.CommentSummary(
+                survey_batch_id=survey_batch_id,
+                analysis_version=version,
+                student_attribute=attr,
+                analysis_type="sentiment",
+                label=label,
+                count=value,
+                created_at=now,
+            )
+        )
+    for label, value in category_counts.items():
+        rows.append(
+            models.CommentSummary(
+                survey_batch_id=survey_batch_id,
+                analysis_version=version,
+                student_attribute=attr,
+                analysis_type="category",
+                label=label,
+                count=value,
+                created_at=now,
+            )
+        )
+    for label, value in importance_counts.items():
+        rows.append(
+            models.CommentSummary(
+                survey_batch_id=survey_batch_id,
+                analysis_version=version,
+                student_attribute=attr,
+                analysis_type="importance",
+                label=label,
+                count=value,
+                created_at=now,
+            )
+        )
+
+    db.add_all(rows)
+    return {
+        "comments_count": total_comments,
+        "important_comments_count": importance_counts["medium"]
+        + importance_counts["high"],
+    }
+
+
+def _populate_score_distributions(
+    db: Session, survey_batch_id: int, student_attribute: str | None = None
+) -> None:
+    """スコア分布をscore_distributionに保存する。既存データは同条件で削除。"""
+    if not hasattr(models, "ScoreDistribution"):
+        return
+    score_columns = [
+        "score_satisfaction_overall",
+        "score_satisfaction_content_volume",
+        "score_satisfaction_content_understanding",
+        "score_satisfaction_content_announcement",
+        "score_satisfaction_instructor_overall",
+        "score_satisfaction_instructor_efficiency",
+        "score_satisfaction_instructor_response",
+        "score_satisfaction_instructor_clarity",
+        "score_instructor_time",
+        "score_instructor_qa",
+        "score_instructor_speaking",
+        "score_self_preparation",
+        "score_self_motivation",
+        "score_self_future",
+        "score_recommend_friend",
+    ]
+
+    # 既存分布を削除
+    db.query(models.ScoreDistribution).filter(
+        models.ScoreDistribution.survey_batch_id == survey_batch_id,
+        models.ScoreDistribution.student_attribute == (student_attribute or "ALL"),
+    ).delete(synchronize_session=False)
+
+    base_query = db.query(models.SurveyResponse).filter(
+        models.SurveyResponse.survey_batch_id == survey_batch_id
     )
-    summary.comments_count = total_comments
+    if student_attribute:
+        base_query = base_query.filter(
+            models.SurveyResponse.student_attribute == student_attribute
+        )
 
-
+    for col_name in score_columns:
+        col = getattr(models.SurveyResponse, col_name, None)
+        if col is None:
+            continue
+        rows = (
+            db.query(col.label("score_value"), func.count(1).label("count"))
+            .filter(col.isnot(None))
+            .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
+            .filter(
+                models.SurveyResponse.student_attribute == student_attribute
+                if student_attribute
+                else True
+            )
+            .group_by(col)
+            .all()
+        )
+        for row in rows:
+            db.add(
+                models.ScoreDistribution(
+                    survey_batch_id=survey_batch_id,
+                    student_attribute=student_attribute or "ALL",
+                    question_key=col_name,
+                    score_value=int(row.score_value),
+                    count=int(row.count),
+                )
+            )
 def _nps_breakdown_from_scores(
     scores: list[int | float],
     *,
@@ -242,7 +448,7 @@ def _nps_breakdown_from_scores(
 def _nps_breakdown_from_db(
     db: Session, survey_batch_id: int, *, nps_scale: int
 ) -> dict:
-    score_column = models.SurveyResponse.score_recommend_to_friend
+    score_column = models.SurveyResponse.score_recommend_friend
     if nps_scale == 10:
         promoters_case = case((score_column.between(9, 10), 1), else_=0)
         passives_case = case((score_column.between(7, 8), 1), else_=0)

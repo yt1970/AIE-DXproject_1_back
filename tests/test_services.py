@@ -211,18 +211,18 @@ def _create_base_entities(db: Session) -> models.SurveyBatch:
         lecture_date=date(2024, 1, 1),
         lecture_number=1,
         status="COMPLETED",
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
     )
     db.add(uploaded)
     db.flush()
 
     batch = models.SurveyBatch(
-        file_id=uploaded.file_id,
+        uploaded_file_id=uploaded.id,
         course_name=uploaded.course_name,
         lecture_date=uploaded.lecture_date,
         lecture_number=uploaded.lecture_number,
         status="READY",
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
     )
     db.add(batch)
     db.flush()
@@ -233,25 +233,27 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     batch = _create_base_entities(db_session)
 
     responses = [
-        models.SurveyResponse(
-            file_id=batch.file_id,
-            survey_batch_id=batch.id,
-            row_index=idx,
-            score_satisfaction_overall=score,
-            score_recommend_to_friend=score + 5,
-        )
-        for idx, score in enumerate([3, 4, 5], start=1)
-    ]
+            models.SurveyResponse(
+                uploaded_file_id=batch.uploaded_file_id,
+                survey_batch_id=batch.id,
+                row_index=idx,
+                score_satisfaction_overall=score,
+                score_recommend_friend=score + 5,
+                student_attribute="ALL",
+            )
+            for idx, score in enumerate([3, 4, 5], start=1)
+        ]
     db_session.add_all(responses)
 
     comments = [
-        models.ResponseComment(
-            file_id=batch.file_id,
-            survey_batch_id=batch.id,
-            question_text="（任意）講義全体のコメント",
-            comment_text=f"comment {idx}",
-            llm_sentiment=sentiment,
-            llm_category=category,
+            models.ResponseComment(
+                uploaded_file_id=batch.uploaded_file_id,
+                survey_batch_id=batch.id,
+                question_type="free_comment",
+                question_text="（任意）講義全体のコメント",
+                comment_text=f"comment {idx}",
+                llm_sentiment=sentiment,
+                llm_category=category,
             llm_importance_level=importance,
             analysis_version="preliminary",
         )
@@ -267,18 +269,27 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     db_session.add_all(comments)
     db_session.commit()
 
-    survey_summary, comment_summary = summary_module.compute_and_upsert_summaries(
+    survey_summary, comment_counts = summary_module.compute_and_upsert_summaries(
         db_session, survey_batch=batch, version="preliminary"
     )
 
-    assert survey_summary.responses_count == 3
+    assert survey_summary.response_count == 3
     assert survey_summary.comments_count == 3
     assert survey_summary.important_comments_count == 2
+    assert comment_counts["comments_count"] == 3
+    assert comment_counts["important_comments_count"] == 2
 
-    assert comment_summary.sentiment_positive == 1
-    assert comment_summary.sentiment_negative == 1
-    assert comment_summary.category_lecture_content == 1
-    assert comment_summary.importance_high == 1
+    rows = db_session.query(models.CommentSummary).all()
+    def _find(analysis_type: str, label: str) -> int:
+        for r in rows:
+            if r.analysis_type == analysis_type and r.label == label:
+                return int(r.count or 0)
+        return 0
+
+    assert _find("sentiment", "positive") == 1
+    assert _find("sentiment", "negative") == 1
+    assert _find("category", "content") == 1
+    assert _find("importance", "high") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -291,7 +302,7 @@ class _DummyEnum:
 
 class _DummyAnalysis:
     def __init__(self, *, sentiment_value: str, importance_level: str) -> None:
-        self.category_normalized = _DummyEnum("講義内容")
+        self.category_normalized = _DummyEnum("content")
         self.summary = "要約"
         self.importance_level = importance_level
         self.importance_normalized = _DummyEnum(importance_level)
@@ -309,18 +320,18 @@ def _create_upload_entities(
         lecture_date=date(2024, 7, 1),
         lecture_number=1,
         status="PROCESSING",
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
     )
     db.add(uploaded)
     db.flush()
 
     batch = models.SurveyBatch(
-        file_id=uploaded.file_id,
+        uploaded_file_id=uploaded.id,
         course_name=uploaded.course_name,
         lecture_date=uploaded.lecture_date,
         lecture_number=uploaded.lecture_number,
         status="PROCESSING",
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
     )
     db.add(batch)
     db.commit()

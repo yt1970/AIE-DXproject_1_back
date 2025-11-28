@@ -83,17 +83,17 @@ def test_comment_analysis_schema_computed_fields_and_exclusion() -> None:
 
 def test_duplicate_check_response_defaults() -> None:
     response = DuplicateCheckResponse(exists=False)
-    assert response.file_id is None
+    assert response.uploaded_file_id is None
 
 
 def test_lecture_metrics_response_extends_payload() -> None:
     response = LectureMetricsResponse(
-        file_id=99,
+        uploaded_file_id=99,
         zoom_participants=120,
         recording_views=45,
         updated_at=datetime(2024, 5, 1, 12, 30),
     )
 
-    assert response.file_id == 99
+    assert response.uploaded_file_id == 99
     assert response.zoom_participants == 120
     assert response.updated_at == datetime(2024, 5, 1, 12, 30)

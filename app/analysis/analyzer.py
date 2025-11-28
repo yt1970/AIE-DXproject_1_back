@@ -216,7 +216,11 @@ def _normalize_sentiment(raw_value: str | None) -> SentimentType:
 CATEGORY_ALIASES = {
     "講師": CategoryType.instructor,
     "運営": CategoryType.operation,
+    "operations": CategoryType.operation,
+    "operation": CategoryType.operation,
     "講義資料": CategoryType.material,
+    "materials": CategoryType.material,
+    "material": CategoryType.material,
     "講義内容": CategoryType.content,
 }
 
@@ -253,6 +257,9 @@ IMPORTANCE_ALIASES = {
     "high": ImportanceType.high,
     "medium": ImportanceType.medium,
     "low": ImportanceType.low,
+    "高": ImportanceType.high,
+    "中": ImportanceType.medium,
+    "低": ImportanceType.low,
     "other": ImportanceType.other,
 }
 
@@ -285,7 +292,9 @@ def _normalize_importance(raw_value: str | None) -> ImportanceType:
 
 RISK_LEVEL_ALIASES = {
     "flag": RiskLevelType.flag,
+    "危険": RiskLevelType.flag,
     "safe": RiskLevelType.safe,
+    "安全": RiskLevelType.safe,
     "other": RiskLevelType.other,
 }
 

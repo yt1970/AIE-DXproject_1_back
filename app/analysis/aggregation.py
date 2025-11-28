@@ -28,8 +28,8 @@ NEGATIVE_KEYWORDS = (
 )
 # 4分類への正規化用キーワード
 FOUR_CATEGORY_KEYWORDS = {
-    "講義資料": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
-    "運営": (
+    "materials": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
+    "operations": (
         "運営",
         "アナウンス",
         "連絡",
@@ -41,7 +41,7 @@ FOUR_CATEGORY_KEYWORDS = {
         "会場",
         "受付",
     ),
-    "講義内容": (
+    "content": (
         "内容",
         "説明",
         "構成",
@@ -69,7 +69,10 @@ def classify_comment(
 def _normalize_to_four_categories(source: str) -> str | None:
     if not source:
         return None
-    lowered = source.lower()
+    lowered = source.strip().lower()
+    # 既に正規化済みの英語コードが来た場合はそのまま返す
+    if lowered in FOUR_CATEGORY_KEYWORDS:
+        return lowered
     for cat, keywords in FOUR_CATEGORY_KEYWORDS.items():
         for kw in keywords:
             if kw in source or kw.lower() in lowered:

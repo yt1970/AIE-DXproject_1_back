@@ -45,7 +45,7 @@ def check_duplicate_upload(
 ) -> DuplicateCheckResponse:
     """
     講義(講座名・日付・回)の重複有無を事前チェックする。
-    既に登録済みなら file_id を返す。
+    既に登録済みなら uploaded_file_id を返す。
     """
     existing = (
         db.query(models.UploadedFile)
@@ -57,13 +57,13 @@ def check_duplicate_upload(
         .first()
     )
     if not existing:
-        return DuplicateCheckResponse(exists=False, file_id=None)
-    return DuplicateCheckResponse(exists=True, file_id=existing.file_id)
+        return DuplicateCheckResponse(exists=False, uploaded_file_id=None)
+    return DuplicateCheckResponse(exists=True, uploaded_file_id=existing.id)
 
 
-@router.delete("/uploads/{file_id}", response_model=DeleteUploadResponse)
+@router.delete("/uploads/{uploaded_file_id}", response_model=DeleteUploadResponse)
 def delete_uploaded_analysis(
-    file_id: int,
+    uploaded_file_id: int,
     db: Session = Depends(get_db),
 ) -> DeleteUploadResponse:
     """
@@ -72,29 +72,31 @@ def delete_uploaded_analysis(
     """
     uploaded = (
         db.query(models.UploadedFile)
-        .filter(models.UploadedFile.file_id == file_id)
+        .filter(models.UploadedFile.id == uploaded_file_id)
         .first()
     )
     if not uploaded:
-        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"File with id {uploaded_file_id} not found"
+        )
 
     if uploaded.status == "PROCESSING":
         raise HTTPException(status_code=409, detail="File is currently processing")
 
     removed_comments = (
         db.query(models.Comment)
-        .filter(models.Comment.file_id == file_id)
+        .filter(models.Comment.uploaded_file_id == uploaded_file_id)
         .delete(synchronize_session=False)
     )
     removed_survey_responses = (
         db.query(models.SurveyResponse)
-        .filter(models.SurveyResponse.file_id == file_id)
+        .filter(models.SurveyResponse.uploaded_file_id == uploaded_file_id)
         .delete(synchronize_session=False)
     )
     # バッチ・サマリも削除
     survey_batch = (
         db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.file_id == file_id)
+        .filter(models.SurveyBatch.uploaded_file_id == uploaded_file_id)
         .first()
     )
     if survey_batch:
@@ -119,16 +121,16 @@ def delete_uploaded_analysis(
     db.commit()
 
     return DeleteUploadResponse(
-        file_id=file_id,
+        uploaded_file_id=uploaded_file_id,
         deleted=True,
         removed_comments=removed_comments or 0,
         removed_survey_responses=removed_survey_responses or 0,
     )
 
 
-@router.post("/uploads/{file_id}/finalize")
+@router.post("/uploads/{uploaded_file_id}/finalize")
 def finalize_analysis(
-    file_id: int,
+    uploaded_file_id: int,
     db: Session = Depends(get_db),
 ) -> dict:
     """
@@ -137,21 +139,23 @@ def finalize_analysis(
     """
     uploaded = (
         db.query(models.UploadedFile)
-        .filter(models.UploadedFile.file_id == file_id)
+        .filter(models.UploadedFile.id == uploaded_file_id)
         .first()
     )
     if not uploaded:
-        raise HTTPException(status_code=404, detail=f"File with id {file_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"File with id {uploaded_file_id} not found"
+        )
 
     survey_batch = (
         db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.file_id == file_id)
+        .filter(models.SurveyBatch.uploaded_file_id == uploaded_file_id)
         .first()
     )
     if not survey_batch:
         # processingなしでfinalizeが呼ばれた場合に備えて作成
         survey_batch = models.SurveyBatch(
-            file_id=uploaded.file_id,
+            uploaded_file_id=uploaded.id,
             lecture_id=uploaded.lecture_id,
             course_name=uploaded.course_name,
             lecture_date=uploaded.lecture_date,
@@ -159,7 +163,7 @@ def finalize_analysis(
             academic_year=uploaded.academic_year,
             period=uploaded.period,
             status=uploaded.status,
-            upload_timestamp=uploaded.upload_timestamp,
+            uploaded_at=uploaded.uploaded_at,
             processing_started_at=uploaded.processing_started_at,
             processing_completed_at=uploaded.processing_completed_at,
             total_responses=uploaded.processed_rows,
@@ -170,18 +174,19 @@ def finalize_analysis(
 
     # 既存のfinalを削除
     db.query(models.Comment).filter(
-        models.Comment.file_id == file_id,
+        models.Comment.uploaded_file_id == uploaded_file_id,
         models.Comment.analysis_version == "final",
     ).delete(synchronize_session=False)
 
     # bulk insertで負荷を抑制のためpreliminaryをコピー
     prelim_rows = (
         db.query(
-            models.Comment.file_id,
+            models.Comment.uploaded_file_id,
             models.Comment.survey_response_id,
             models.Comment.survey_batch_id,
             models.Comment.account_id,
             models.Comment.account_name,
+            models.Comment.question_type,
             models.Comment.question_text,
             models.Comment.comment_text,
             models.Comment.llm_category,
@@ -194,7 +199,7 @@ def finalize_analysis(
             models.Comment.is_important,
         )
         .filter(
-            models.Comment.file_id == file_id,
+            models.Comment.uploaded_file_id == uploaded_file_id,
             (models.Comment.analysis_version == "preliminary")
             | (models.Comment.analysis_version.is_(None)),
         )
@@ -203,9 +208,10 @@ def finalize_analysis(
 
     payloads = [
         {
-            "file_id": row.file_id,
+            "uploaded_file_id": row.uploaded_file_id,
             "survey_response_id": row.survey_response_id,
             "survey_batch_id": row.survey_batch_id or survey_batch.id,
+            "question_type": row.question_type or row.question_text,
             "account_id": row.account_id,
             "account_name": row.account_name,
             "question_text": row.question_text,
@@ -234,7 +240,11 @@ def finalize_analysis(
     compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
     db.commit()
 
-    return {"file_id": file_id, "finalized": True, "final_count": created}
+    return {
+        "uploaded_file_id": uploaded_file_id,
+        "finalized": True,
+        "final_count": created,
+    }
 
 
 @router.post("/uploads", response_model=UploadResponse)
@@ -289,7 +299,7 @@ async def upload_and_enqueue_analysis(
         lecture_id=metadata.lecture_id,
         status=QUEUED_STATUS,
         s3_key=stored_uri,
-        upload_timestamp=datetime.now(UTC),
+        uploaded_at=datetime.now(UTC),
         original_filename=file.filename,
         content_type=file.content_type,
         total_rows=0,
@@ -314,7 +324,7 @@ async def upload_and_enqueue_analysis(
         )
         detail = "A file for this course, date, and lecture number already exists."
         if existing_file:
-            detail += f" The conflicting file_id is {existing_file.file_id}."
+            detail += f" The conflicting uploaded_file_id is {existing_file.id}."
 
         raise HTTPException(status_code=409, detail=detail)
     except Exception as exc:
@@ -324,33 +334,20 @@ async def upload_and_enqueue_analysis(
         )
 
     try:
-        async_result = process_uploaded_file.delay(file_id=new_file_record.file_id)
+        process_uploaded_file.run(file_id=new_file_record.id)
     except Exception as exc:
-        logger.exception("Failed to enqueue background task.")
         db.refresh(new_file_record)
         new_file_record.status = "FAILED"
-        new_file_record.error_message = f"Failed to enqueue background task: {exc}"
+        new_file_record.error_message = f"Failed to process upload: {exc}"
         db.add(new_file_record)
         db.commit()
         raise HTTPException(
-            status_code=500, detail="Failed to enqueue background analysis job."
+            status_code=500, detail="Failed to run background analysis job."
         ) from exc
 
-    try:
-        db.refresh(new_file_record)
-    except Exception:
-        pass
-
-    if async_result:
-        task_id = getattr(async_result, "id", None)
-        if task_id and new_file_record.task_id != task_id:
-            new_file_record.task_id = task_id
-            db.add(new_file_record)
-            db.commit()
-
     return UploadResponse(
-        file_id=new_file_record.file_id,
-        status_url=f"/api/v1/uploads/{new_file_record.file_id}/status",
+        uploaded_file_id=new_file_record.id,
+        status_url=f"/api/v1/uploads/{new_file_record.id}/status",
         message="Upload accepted. Analysis will run in the background.",
     )
 
@@ -397,7 +394,7 @@ def delete_uploaded_by_identity(
 
     # 指定されている場合は、analysis_versionでフィルタリングしてコメントを削除
     q_comments = db.query(models.Comment).filter(
-        models.Comment.file_id == uploaded.file_id
+        models.Comment.uploaded_file_id == uploaded.id
     )
     if payload.analysis_version in {"final", "preliminary"}:
         q_comments = q_comments.filter(
@@ -405,18 +402,17 @@ def delete_uploaded_by_identity(
         )
     removed_comments = q_comments.delete(synchronize_session=False) or 0
 
-    # バージョン指定の削除でコメントのみが削除された場合はファイルを保持、それ以外はsurvey/metrics/fileも削除
-    # versionがNoneの場合は、データセット全体を削除する
+    # バージョン指定なしなら関連データも削除、指定ありならコメントのみ削除
     if payload.analysis_version is None:
         removed_survey_responses = (
             db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.file_id == uploaded.file_id)
+            .filter(models.SurveyResponse.uploaded_file_id == uploaded.id)
             .delete(synchronize_session=False)
             or 0
         )
         survey_batch = (
             db.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.file_id == uploaded.file_id)
+            .filter(models.SurveyBatch.uploaded_file_id == uploaded.id)
             .first()
         )
         if survey_batch:
@@ -428,7 +424,7 @@ def delete_uploaded_by_identity(
             ).delete(synchronize_session=False)
             db.delete(survey_batch)
         db.query(models.LectureMetrics).filter(
-            models.LectureMetrics.file_id == uploaded.file_id
+            models.LectureMetrics.uploaded_file_id == uploaded.id
         ).delete(synchronize_session=False)
         # ベストエフォートでストレージからも削除
         try:
@@ -442,7 +438,7 @@ def delete_uploaded_by_identity(
         # 特定バージョンのみ削除した場合は該当サマリのみ削除
         survey_batch = (
             db.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.file_id == uploaded.file_id)
+            .filter(models.SurveyBatch.uploaded_file_id == uploaded.id)
             .first()
         )
         if survey_batch and payload.analysis_version in {"final", "preliminary"}:
@@ -457,7 +453,7 @@ def delete_uploaded_by_identity(
 
     db.commit()
     return DeleteUploadResponse(
-        file_id=uploaded.file_id,
+        uploaded_file_id=uploaded.id,
         deleted=True,
         removed_comments=removed_comments,
         removed_survey_responses=removed_survey_responses,
