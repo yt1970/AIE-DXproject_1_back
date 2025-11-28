@@ -13,6 +13,7 @@ http://localhost:8000/docs にアクセスしてインタラクティブなAPI�
 ## ドキュメント
 - コンポーネントガイド: `docs/component_guide.md`（フォルダ単位の役割と主要ファイル）
 - 詳細設計/データフロー: `docs/backend_system_design.md`
+- データフロー図: [`docs/dataflow.md`](./docs/dataflow.md)
 
 ## 開発ワークフロー
 
