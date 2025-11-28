@@ -284,8 +284,7 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     )
 
     assert survey_summary.response_count == 3
-    assert survey_summary.comments_count == 3
-    assert survey_summary.important_comments_count == 2
+    # NOTE: comments_count and important_comments_count removed from model
     assert comment_counts["comments_count"] == 3
     assert comment_counts["important_comments_count"] == 2
 
