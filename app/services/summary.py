@@ -121,11 +121,11 @@ def _populate_survey_summary(
     nps_breakdown = _nps_breakdown_from_db(
         db, survey_batch_id=survey_batch_id, nps_scale=nps_scale
     )
-    summary.nps_score = nps_breakdown["score"]
-    summary.nps_promoters = nps_breakdown["promoters"]
-    summary.nps_passives = nps_breakdown["passives"]
-    summary.nps_detractors = nps_breakdown["detractors"]
-    summary.nps_total = nps_breakdown["total"]
+    summary.nps = nps_breakdown["score"]
+    summary.promoter_count = nps_breakdown["promoters"]
+    summary.passive_count = nps_breakdown["passives"]
+    summary.detractor_count = nps_breakdown["detractors"]
+    # Note: nps_total removed from model, value is tracked via response_count
 
     # コメント関連のカウントは後でコメントサマリーから反映して整合を取る
     # Note: comments_count and important_comments_count were removed from model
@@ -144,13 +144,13 @@ def _refresh_comment_summary(
         models.CommentSummary.student_attribute == attr,
     ).delete(synchronize_session=False)
 
-    filters = [models.ResponseComment.survey_batch_id == survey_batch_id]
+    # NOTE: ResponseComment no longer has survey_batch_id, must join through response
+    query = db.query(models.ResponseComment).join(models.ResponseComment.response)
+    filters = [models.SurveyResponse.survey_batch_id == survey_batch_id]
     vf = _version_filter(version)
     if vf is not None:
         filters.append(vf)
-    query = db.query(models.ResponseComment)
     if student_attribute:
-        query = query.join(models.ResponseComment.survey_response)
         filters.append(models.SurveyResponse.student_attribute == student_attribute)
 
     rc = models.ResponseComment
