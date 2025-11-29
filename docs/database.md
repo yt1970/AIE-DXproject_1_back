@@ -40,7 +40,7 @@ erDiagram
 
         string session "講義回"
 
-        date lecture_date "講義日"
+        date lecture_on "講義日"
 
         string instructor_name "講師名"
 
@@ -120,11 +120,11 @@ erDiagram
 
         text comment_text "コメント本文"
 
-        string llm_sentiment "ポジネガ"
+        string llm_sentiment_type "ポジネガ"
 
         string llm_category "カテゴリ"
 
-        string llm_importance "重要度"
+        string llm_importance_level "重要度"
 
         boolean llm_is_abusive "危険かどうか"
 
@@ -194,6 +194,8 @@ erDiagram
 
         int count "人数"
 
+        datetime created_at "集計実行日時"
+
     }
 
 
@@ -211,6 +213,8 @@ erDiagram
         string label "positive/materials等"
 
         int count "件数"
+
+        datetime created_at "集計実行日時"
 
     }
 
@@ -231,7 +235,7 @@ erDiagram
 | `term` | VARCHAR(50) | Unique (複合) | 期間 (例: '9月-11月', '冬') |
 | `name` | VARCHAR(255) | Unique (複合) | 講座名 |
 | `session` | VARCHAR(50) | Unique (複合) | 講義回 (例: '第1回', ‘特別回’) |
-| `lecture_date` | DATE | Unique (複合) | 講義の日付 |
+| `lecture_on` | DATE | Unique (複合) | 講義の日付 |
 | `instructor_name` | VARCHAR(255) | Not Null | 講師名 |
 | `description` | TEXT | Nullable | 講義内容（シラバス概要） |
 | `created_at` | DATETIME | Default Current | レコード作成日時 |
@@ -283,9 +287,9 @@ erDiagram
 | `response_id` | BIGINT | FK (`survey_responses.id`) | 紐づく回答ID |
 | `question_type` | VARCHAR(50) | Not Null | 設問タイプ (※定義値は下記参照) |
 | `comment_text` | TEXT | Not Null | コメント本文 |
-| `llm_sentiment` | VARCHAR(20) | Nullable | `positive`, `neutral`, `negative` |
-| `llm_category` | VARCHAR(50) | Nullable | `content`, `materials`, `operations`, `other` |
-| `llm_importance` | VARCHAR(10) | Nullable | `high`, `medium`, `low` |
+| `llm_sentiment_type` | VARCHAR(20) | Nullable | `positive`, `neutral`, `negative` |
+| `llm_category` | VARCHAR(50) | Nullable | `content`, `material`, `instructor`, `operation`, `other` |
+| `llm_importance_level` | VARCHAR(10) | Nullable | `high`, `medium`, `low` |
 | `llm_is_abusive` | BOOLEAN | Default FALSE | 誹謗中傷や攻撃的な発言など危険かどうかのフラグ |
 | `is_analyzed` | BOOLEAN | Default FALSE | LLM分析済みかどうかのフラグ（あると便利） |
 
@@ -342,14 +346,17 @@ erDiagram
 | `question_key` | VARCHAR(50) | Not Null | 対象のカラム名 (例: `score_content_understanding`) |
 | `score_value` | INT | Not Null | 点数 (1, 2, 3, 4, 5) |
 | `count` | INT | Not Null | その点数をつけた人数 |
+| `created_at` | DATETIME | Default Current | 集計実行日時 |
 
 **データの格納イメージ:**
 
 | **id** | **survey_batch_id** | **student_attribute** | **question_key** | **score_value** | **count** |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 101 | ALL | score_understanding | 5 | 30 |
-| 2 | 101 | ALL | score_understanding | 4 | 12 |
-| 3 | 101 | ALL | score_understanding | 3 | 2 |
+| 1 | 101 | ALL | score_content_understanding | 5 | 30 |
+| 2 | 101 | ALL | score_content_understanding | 4 | 12 |
+| 3 | 101 | ALL | score_content_understanding | 3 | 2 |
+| 4 | 101 | ALL | score_satisfaction_overall | 5 | 25 |
+| 5 | 101 | ALL | score_satisfaction_overall | 4 | 15 |
 | ... | ... | ... | ... | ... | ... |
 
 ## `comment_summaries` (コメント分析集計)
@@ -362,8 +369,9 @@ LLMによる分析結果（感情・カテゴリ・重要度）を集計する�
 | `survey_batch_id` | BIGINT | FK | `survey_batches.id` への外部キー |
 | `student_attribute` | VARCHAR(50) | Not Null | 属性（'ALL' 含む） |
 | `analysis_type` | VARCHAR(20) | Not Null | 集計タイプ (`sentiment`, `category`, `importance`) |
-| `label` | VARCHAR(50) | Not Null | 値 (例: `positive`, `materials`, `high`) |
+| `label` | VARCHAR(50) | Not Null | 値 (例: `positive`, `material`, `high`) |
 | `count` | INT | Not Null | 該当するコメント数 |
+| `created_at` | DATETIME | Default Current | 集計実行日時 |
 
 **データの格納イメージ:**
 
@@ -371,8 +379,14 @@ LLMによる分析結果（感情・カテゴリ・重要度）を集計する�
 | --- | --- | --- | --- | --- | --- |
 | 1 | 101 | ALL | sentiment | positive | 45 |
 | 2 | 101 | ALL | sentiment | negative | 3 |
-| 3 | 101 | ALL | category | content | 20 |
-| 4 | 101 | ALL | category | materials | 5 |
+| 3 | 101 | ALL | sentiment | neutral | 10 |
+| 4 | 101 | ALL | category | content | 20 |
+| 5 | 101 | ALL | category | material | 5 |
+| 6 | 101 | ALL | category | operation | 8 |
+| 7 | 101 | ALL | category | other | 2 |
+| 8 | 101 | ALL | importance | high | 12 |
+| 9 | 101 | ALL | importance | medium | 15 |
+| 10 | 101 | ALL | importance | low | 8 |
 
 # 講義全体を通しての集計
 
