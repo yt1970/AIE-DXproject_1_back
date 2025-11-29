@@ -26,8 +26,8 @@ def get_course_comments(
     version: str | None = None,
     importance: str | None = Query(
         default=None,
-        description="importance level to filter (low/medium/high/other)",
-        pattern="^(low|medium|high|other)$",
+        description="importance level to filter (low/medium/high)",
+        pattern="^(low|medium|high)$",
     ),
     important_only: bool = Query(
         default=False,
@@ -50,7 +50,10 @@ def get_course_comments(
         )
     )
     if version:
-        query = query.filter(models.ResponseComment.analysis_version == version)
+        # version は論理的なバージョン名（"preliminary" / "final"）として扱い、
+        # 実際の保存状態は SurveyBatch.batch_type で管理する。
+        batch_type = "confirmed" if version == "final" else "preliminary"
+        query = query.filter(models.SurveyBatch.batch_type == batch_type)
     if importance:
         query = query.filter(models.ResponseComment.llm_importance_level == importance)
     elif important_only:

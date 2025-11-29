@@ -134,11 +134,14 @@ def analyze_and_store_comments(
                     if analysis_result.sentiment_normalized
                     else None
                 ),
-                llm_importance_level=analysis_result.importance_normalized.value,
+                llm_importance_level=(
+                    analysis_result.importance_normalized.value
+                    if analysis_result.importance_normalized
+                    else None
+                ),
                 llm_is_abusive=analysis_result.risk_level_normalized
                 == models.RiskLevelType.flag,
                 is_analyzed=True,
-                analysis_version="preliminary",
             )
 
             if debug_logs_enabled:

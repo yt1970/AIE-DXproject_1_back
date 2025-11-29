@@ -88,14 +88,12 @@ def test_importance_normalization():
     ), "Medium (mixed case) failed"
     assert _normalize_importance("low") == ImportanceType.low, "low failed"
 
-    # Empty/None
-    assert _normalize_importance("") == ImportanceType.other, "empty string failed"
-    assert _normalize_importance(None) == ImportanceType.other, "None failed"
+    # Empty/None -> None (DB 上は NULL として扱う)
+    assert _normalize_importance("") is None, "empty string failed"
+    assert _normalize_importance(None) is None, "None failed"
 
-    # Unknown
-    assert (
-        _normalize_importance("unknown") == ImportanceType.other
-    ), "unknown value failed"
+    # Unknown -> None
+    assert _normalize_importance("unknown") is None, "unknown value failed"
 
     print("✅ All importance normalization tests passed!")
 

@@ -24,7 +24,7 @@ class CommentAnalysisResult:
         llm_result: llm_analyzer.LLMAnalysisResult,
         risk_level_normalized: RiskLevelType,
         category_normalized: CategoryType,
-        importance_normalized: ImportanceType,
+        importance_normalized: ImportanceType | None,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
@@ -51,7 +51,7 @@ class CommentAnalysisResult:
 
     @property
     def importance(self) -> str:
-        return self.importance_normalized.value
+        return self.importance_normalized.value if self.importance_normalized else ""
 
     @property
     def risk_level(self) -> str:
@@ -64,7 +64,7 @@ class CommentAnalysisResult:
             f"is_slanderous={self.is_slanderous}, "
             f"sentiment={self.sentiment_normalized.value}, "
             f"category={self.category_normalized.value}, "
-            f"importance={self.importance_normalized.value}, "
+            f"importance={self.importance_normalized.value if self.importance_normalized else None}, "
             f"risk_level={self.risk_level_normalized.value}"
             ")"
         )
@@ -139,7 +139,9 @@ def analyze_comment(
     llm_structured.importance_score = final_importance_score
     llm_structured.risk_level = risk_level_enum.value
     llm_structured.category = category_enum.value
-    llm_structured.importance_level = importance_enum.value
+    llm_structured.importance_level = (
+        importance_enum.value if importance_enum is not None else None
+    )
     llm_structured.sentiment = sentiment_enum.value
     llm_structured.sentiment_normalized = sentiment_enum
     llm_structured.category_normalized = category_enum
@@ -260,21 +262,20 @@ IMPORTANCE_ALIASES = {
     "高": ImportanceType.high,
     "中": ImportanceType.medium,
     "低": ImportanceType.low,
-    "other": ImportanceType.other,
 }
 
 IMPORTANCE_DISPLAY = {
     ImportanceType.high: "high",
     ImportanceType.medium: "medium",
     ImportanceType.low: "low",
-    ImportanceType.other: "other",
 }
 
 
-def _normalize_importance(raw_value: str | None) -> ImportanceType:
+def _normalize_importance(raw_value: str | None) -> ImportanceType | None:
     """Map arbitrary importance labels to the Enum we persist."""
     if not raw_value:
-        return ImportanceType.other
+        # 「その他」は Enum では表現せず、DB 上は NULL として扱う
+        return None
 
     normalized = raw_value.strip().lower()
     if normalized in ImportanceType.__members__:
@@ -287,7 +288,8 @@ def _normalize_importance(raw_value: str | None) -> ImportanceType:
         if key.lower() == normalized:
             return mapped
 
-    return ImportanceType.other
+    # 未知の値も NULL 扱い（DB では NULL、集計では low と同等に扱う）
+    return None
 
 
 RISK_LEVEL_ALIASES = {
