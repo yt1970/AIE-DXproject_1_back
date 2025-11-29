@@ -166,19 +166,15 @@ def finalize_analysis(
     survey_batch.batch_type = "confirmed"
     # survey_batch.finalized_at = datetime.now(UTC) # モデルにないのでコメントアウト
 
-    response_ids_subq = select(models.SurveyResponse.id).where(
-        models.SurveyResponse.survey_batch_id == survey_batch_id
-    )
-
+    # コメント自体にはバージョン概念を持たせず、バッチの種別で状態を管理する。
     updated_comments = (
         db.query(models.ResponseComment)
-        .filter(models.ResponseComment.response_id.in_(response_ids_subq))
-        .update(
-            {models.ResponseComment.analysis_version: "final"},
-            synchronize_session=False,
-        )
+        .join(models.SurveyResponse, models.ResponseComment.response_id == models.SurveyResponse.id)
+        .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
+        .count()
     )
 
+    # 現在のバッチ状態（batch_type）に基づいてサマリを再計算する。
     compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
     
     db.add(survey_batch)
@@ -331,6 +327,7 @@ class UploadIdentityDeleteRequest(BaseModel):
     academic_year: str | None = None
     period: str | None = None
     lecture_number: int
+    # NOTE: 旧設計との互換用。現在は batch_type で状態管理しているため、実装上は未使用。
     analysis_version: str | None = None
 
 
@@ -376,20 +373,14 @@ def delete_uploaded_by_identity(
     removed_comments = 0
     removed_survey_responses = 0
 
-    # 指定されている場合は、analysis_versionでフィルタリングしてコメントを削除
-    # 注: 新設計ではResponseCommentにanalysis_versionがある
     q_comments = db.query(models.ResponseComment).filter(
         models.ResponseComment.response_id.in_(
             db.query(models.SurveyResponse.id).filter(models.SurveyResponse.survey_batch_id == survey_batch.id)
         )
     )
-    if payload.analysis_version in {"final", "preliminary"}:
-        q_comments = q_comments.filter(
-            models.ResponseComment.analysis_version == payload.analysis_version
-        )
     removed_comments = q_comments.delete(synchronize_session=False) or 0
 
-    # バージョン指定なしなら関連データも削除
+    # バージョン指定なしなら関連データも削除（バッチごと物理削除）
     if payload.analysis_version is None:
         removed_survey_responses = (
             db.query(models.SurveyResponse)
@@ -407,17 +398,9 @@ def delete_uploaded_by_identity(
         
         db.delete(survey_batch)
     else:
-        # 特定バージョンのみ削除した場合は該当サマリのみ削除
-        # SurveySummaryにはanalysis_versionがある
-        if payload.analysis_version in {"final", "preliminary"}:
-            db.query(models.SurveySummary).filter(
-                models.SurveySummary.survey_batch_id == survey_batch.id,
-                models.SurveySummary.analysis_version == payload.analysis_version,
-            ).delete(synchronize_session=False)
-            db.query(models.CommentSummary).filter(
-                models.CommentSummary.survey_batch_id == survey_batch.id,
-                models.CommentSummary.analysis_version == payload.analysis_version,
-            ).delete(synchronize_session=False)
+        # 旧API互換: analysis_version が指定されている場合は、コメントのみを削除対象とし、
+        # SurveySummary / CommentSummary / SurveyBatch は保持する。
+        # （analysis_version カラムは廃止済みのため、追加フィルタは行わない）
 
     db.commit()
     return DeleteUploadResponse(

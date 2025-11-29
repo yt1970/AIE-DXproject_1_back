@@ -52,21 +52,19 @@ def _choose_effective_batches(
 def _pick_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[Tuple[int, str], models.SurveySummary],
+    summaries: Dict[int, models.SurveySummary],
 ) -> Optional[models.SurveySummary]:
-    return summaries.get((batch_id, version)) or summaries.get(
-        (batch_id, "preliminary")
-    )
+    # version は旧設計互換のため残しているが、現在はバッチ単位で単一サマリのみを保持する。
+    return summaries.get(batch_id)
 
 
 def _pick_comment_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[Tuple[int, str], List[models.CommentSummary]],
+    summaries: Dict[int, List[models.CommentSummary]],
 ) -> List[models.CommentSummary]:
-    return summaries.get((batch_id, version)) or summaries.get(
-        (batch_id, "preliminary")
-    ) or []
+    # version は旧設計互換のため残しているが、現在はバッチ単位で単一集合のみを保持する。
+    return summaries.get(batch_id) or []
 
 
 def _aggregate_scores(
@@ -177,9 +175,9 @@ def _aggregate_counts(
 def _load_summaries(
     db: Session,
     batch_ids: List[int],
-) -> Tuple[
-    Dict[Tuple[int, str], models.SurveySummary],
-    Dict[Tuple[int, str], List[models.CommentSummary]],
+    ) -> Tuple[
+    Dict[int, models.SurveySummary],
+    Dict[int, List[models.CommentSummary]],
 ]:
     survey_rows = (
         db.query(models.SurveySummary)
@@ -191,14 +189,13 @@ def _load_summaries(
         .filter(models.CommentSummary.survey_batch_id.in_(batch_ids))
         .all()
     )
-    survey_map = {
-        (row.survey_batch_id, row.analysis_version): row for row in survey_rows
+    # analysis_version カラム廃止に伴い、バッチID単位で集約する。
+    survey_map: Dict[int, models.SurveySummary] = {
+        row.survey_batch_id: row for row in survey_rows
     }
-    comment_map: Dict[Tuple[int, str], List[models.CommentSummary]] = {}
+    comment_map: Dict[int, List[models.CommentSummary]] = {}
     for row in comment_rows:
-        comment_map.setdefault((row.survey_batch_id, row.analysis_version), []).append(
-            row
-        )
+        comment_map.setdefault(row.survey_batch_id, []).append(row)
     return survey_map, comment_map
 
 

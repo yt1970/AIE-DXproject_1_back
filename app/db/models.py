@@ -35,10 +35,10 @@ class SentimentType(str, enum.Enum):
 
 
 class ImportanceType(str, enum.Enum):
+    """重要度のEnum。LLMがhigh/medium/low以外の値を返した場合は、DB上はNULLとして保存する。"""
     high = "high"
     medium = "medium"
     low = "low"
-    other = "other"
 
 
 class RiskLevelType(str, enum.Enum):
@@ -131,11 +131,10 @@ class ResponseComment(Base):
     
     # LLM Analysis
     llm_sentiment_type = Column(String(20))  # positive, neutral, negative
-    llm_category = Column(String(50))   # content, materials, operations, other
-    llm_importance_level = Column(String(10)) # high, medium, low
+    llm_category = Column(String(50))   # content, material, instructor, operation, other
+    llm_importance_level = Column(String(10))  # high, medium, low (NULL if LLM returns other values)
     llm_is_abusive = Column(Boolean, default=False)
     is_analyzed = Column(Boolean, default=False)
-    analysis_version = Column(String(20))  # preliminary, final
 
     # Relationships
     response = relationship("SurveyResponse", back_populates="response_comments")
@@ -147,7 +146,6 @@ class SurveySummary(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
-    analysis_version = Column(String(20), nullable=False, default="preliminary")  # preliminary, final
     response_count = Column(Integer, nullable=False)
     
     nps = Column(DECIMAL(5, 2))
@@ -183,6 +181,7 @@ class ScoreDistribution(Base):
     question_key = Column(String(50), nullable=False)
     score_value = Column(Integer, nullable=False)
     count = Column(Integer, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
 
     # Relationships
     survey_batch = relationship("SurveyBatch", back_populates="score_distributions")
@@ -194,7 +193,6 @@ class CommentSummary(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
-    analysis_version = Column(String(20), nullable=False, default="preliminary")  # preliminary, final
     analysis_type = Column(String(20), nullable=False) # sentiment/category
     label = Column(String(50), nullable=False)
     count = Column(Integer, nullable=False)

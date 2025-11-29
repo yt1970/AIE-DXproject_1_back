@@ -11,17 +11,6 @@ from app.db import models
 IMPORTANT_LEVELS = ("medium", "high")
 
 
-def _version_filter(version: str | None):
-    if version == "final":
-        return models.ResponseComment.analysis_version == "final"
-    if version == "preliminary":
-        return or_(
-            models.ResponseComment.analysis_version == "preliminary",
-            models.ResponseComment.analysis_version.is_(None),
-        )
-    return None
-
-
 def compute_and_upsert_summaries(
     db: Session,
     *,
@@ -39,7 +28,6 @@ def compute_and_upsert_summaries(
         db.query(models.SurveySummary)
         .filter(
             models.SurveySummary.survey_batch_id == survey_batch.id,
-            models.SurveySummary.analysis_version == version,
             models.SurveySummary.student_attribute == (student_attribute or "ALL"),
         )
         .first()
@@ -47,7 +35,6 @@ def compute_and_upsert_summaries(
     if not survey_summary:
         survey_summary = models.SurveySummary(
             survey_batch_id=survey_batch.id,
-            analysis_version=version,
             student_attribute=student_attribute or "ALL",
         )
 
@@ -140,16 +127,13 @@ def _refresh_comment_summary(
     attr = student_attribute or "ALL"
     db.query(models.CommentSummary).filter(
         models.CommentSummary.survey_batch_id == survey_batch_id,
-        models.CommentSummary.analysis_version == version,
         models.CommentSummary.student_attribute == attr,
     ).delete(synchronize_session=False)
 
     # NOTE: ResponseComment no longer has survey_batch_id, must join through response
     query = db.query(models.ResponseComment).join(models.ResponseComment.response)
     filters = [models.SurveyResponse.survey_batch_id == survey_batch_id]
-    vf = _version_filter(version)
-    if vf is not None:
-        filters.append(vf)
+    # version is kept for backward compatibility but no longer used for filtering.
     if student_attribute:
         filters.append(models.SurveyResponse.student_attribute == student_attribute)
 
@@ -296,7 +280,6 @@ def _refresh_comment_summary(
         rows.append(
             models.CommentSummary(
                 survey_batch_id=survey_batch_id,
-                analysis_version=version,
                 student_attribute=attr,
                 analysis_type="sentiment",
                 label=label,
@@ -308,7 +291,6 @@ def _refresh_comment_summary(
         rows.append(
             models.CommentSummary(
                 survey_batch_id=survey_batch_id,
-                analysis_version=version,
                 student_attribute=attr,
                 analysis_type="category",
                 label=label,
@@ -320,7 +302,6 @@ def _refresh_comment_summary(
         rows.append(
             models.CommentSummary(
                 survey_batch_id=survey_batch_id,
-                analysis_version=version,
                 student_attribute=attr,
                 analysis_type="importance",
                 label=label,
