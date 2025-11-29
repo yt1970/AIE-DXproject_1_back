@@ -1,7 +1,7 @@
 import logging
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, contains_eager
 
 from app.db import models
@@ -12,14 +12,27 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get(
-    "/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema]
+IMPORTANT_LEVELS = (
+    models.ImportanceType.medium.value,
+    models.ImportanceType.high.value,
 )
+
+
+@router.get("/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema])
 def get_course_comments(
     course_name: str,
     limit: int = 100,
     skip: int = 0,
     version: str | None = None,
+    importance: str | None = Query(
+        default=None,
+        description="importance level to filter (low/medium/high/other)",
+        pattern="^(low|medium|high|other)$",
+    ),
+    important_only: bool = Query(
+        default=False,
+        description="When true, only medium/high importance comments are returned",
+    ),
     db: Session = Depends(get_db),
 ):
     """講義名単位で最新のコメント分析結果を取得する。"""
@@ -38,6 +51,12 @@ def get_course_comments(
     )
     if version:
         query = query.filter(models.ResponseComment.analysis_version == version)
+    if importance:
+        query = query.filter(models.ResponseComment.llm_importance_level == importance)
+    elif important_only:
+        query = query.filter(
+            models.ResponseComment.llm_importance_level.in_(IMPORTANT_LEVELS)
+        )
     comments_with_scores = (
         query.order_by(models.ResponseComment.id.desc()).offset(skip).limit(limit).all()
     )

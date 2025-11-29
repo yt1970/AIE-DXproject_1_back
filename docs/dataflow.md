@@ -1,8 +1,8 @@
 # データフロー
 
-CSVアップロードから結果参照までのデータフローと処理詳細を説明します。
+CSVアップロードからダッシュボード参照までのフローを、重複説明なしで整理しています。
 
-## システムアーキテクチャ図
+## システム構成
 
 ```mermaid
 graph TB
@@ -35,12 +35,12 @@ graph TB
 
     subgraph Database["Database Layer"]
         DB["PostgreSQL/SQLite"]
-        Tables["7 Tables<br/>━━━━━━━━<br/>lectures<br/>survey_batches<br/>survey_responses<br/>response_comments<br/>survey_summaries<br/>score_distributions<br/>comment_summaries"]
+        Tables["lectures / survey_batches / survey_responses / response_comments / survey_summaries / score_distributions / comment_summaries"]
     end
 
     subgraph External["External Services"]
-        S3["S3 Storage<br/>(Optional)"]
-        LLMAPI["LLM API<br/>(OpenAI/Anthropic)"]
+        S3["S3 Storage (Optional)"]
+        LLMAPI["LLM API (OpenAI/Anthropic)"]
     end
 
     Web --> FastAPI
@@ -70,289 +70,108 @@ graph TB
     Comments --> DB
     Metrics --> DB
     Dashboard --> DB
-    Analysis --> Redis
+    Analysis --> DB
     
     DB --> Tables
 ```
 
-## 処理フロー詳細
+## 処理ステージ
 
-### 1. CSVアップロード
+### 1. CSVアップロード（API層）
+- `POST /api/v1/uploads` がCSVとメタデータ（`course_name`, `lecture_on`, `lecture_number`, 任意で `lecture_id`/`uploader_id`）を受信。
+- 重複検知は `GET /api/v1/uploads/check-duplicate` をクライアント側で先に叩く運用。本体は常に受理し、即座に非同期処理へ移行。
 
-**エンドポイント**: `POST /api/v1/uploads`
-
-クライアントがCSVファイルとメタデータを送信します。
-
-**送信データ**:
-- CSVファイル
-- 講義情報（年度、学期、講義名、セッション、講義日、講師名）
-- バッチタイプ（preliminary/confirmed）
-- オプション情報（Zoom参加者数、録画視聴回数）
-
-### 2. ファイル保存
-
-**Storage Service** (`app/services/storage.py`)
-
-- ローカルストレージまたはS3にCSVファイルを保存
-- ファイルパスをデータベースに記録（将来的に`survey_batches`に `file_path` カラム追加予定）
-
-### 3. データ正規化
-
-**Upload Pipeline** (`app/services/upload_pipeline.py`)
-
-#### 3.1 Lecture の取得または作成
-
-```python
-# 複合ユニーク制約で重複チェック
-lecture = get_or_create_lecture(
-    academic_year=2024,
-    term="前期",
-    name="データサイエンス入門",
-    session="第1回",
-    lecture_on="2024-04-10",
-    instructor_name="山田太郎"
-)
-```
-
-**テーブル**: `lectures`
-
-#### 3.2 SurveyBatch の作成
-
-```python
-survey_batch = create_survey_batch(
-    lecture_id=lecture.id,
-    batch_type="preliminary",
-    zoom_participants=50,
-    recording_views=120
-)
-```
-
-**テーブル**: `survey_batches`
-
-#### 3.3 SurveyResponse の作成
-
-CSVの各行を `SurveyResponse` レコードとして保存。
-
-```python
-for row in csv_rows:
-    survey_response = create_survey_response(
-        survey_batch_id=survey_batch.id,
-        account_id=row['account_id'],
-        student_attribute=row['student_attribute'],
-        score_satisfaction_overall=row['Q1'],
-        score_content_volume=row['Q2'],
-        # ... 12種類のスコア
-        score_recommend_friend=row['Q12']
-    )
-```
-
-**テーブル**: `survey_responses`
-
-#### 3.4 ResponseComment の作成
-
-自由記述コメント列を `ResponseComment` レコードとして保存。
-
-```python
-for comment_column in ['good_point', 'improvement_point', 'free_comment']:
-    if row[comment_column]:
-        create_response_comment(
-            response_id=survey_response.id,
-            question_type=comment_column,
-            comment_text=row[comment_column]
-        )
-```
-
-**テーブル**: `response_comments`
-
-### 4. 非同期分析のキュー投入
-
-**Celery Task** (`app/workers/tasks.py`)
-
-アップロード完了後、Celeryタスク `process_uploaded_file` をRedisキューに投入。
-
-```python
-task = process_uploaded_file.delay(survey_batch_id=survey_batch.id)
-```
-
-**即座にレスポンス**:
 ```json
 {
-  "upload_id": 123,
-  "message": "Upload successful",
-  "status": "processing"
+  "survey_batch_id": 123,
+  "status_url": "/api/v1/uploads/123/status",
+  "message": "Upload accepted. Analysis will run in the background."
 }
 ```
 
-### 5. LLM分析（バックグラウンド）
+> 年度・学期・講師名は必須ではなく、欠損時は `_derive_academic_year()` が年度を推測し、未知の値は `"Unknown"` / `"TBD"` で補完します。
 
-**LLM Analyzer** (`app/analysis/comment_analyzer.py`)
+### 2. ファイル保存とエンティティ作成（Service層）
+- `app/services/storage.py` がCSVをローカルまたはS3へ保存し、`local://` or `s3://` URIを返却。URIはタスク投入時に渡すだけでDB保存はしない。
+- `app/api/upload.py` で `Lecture` を検索 or 新規作成。`metadata.lecture_id` があれば再利用、なければ講義名+日付+回次で探索し、無ければ `term="Unknown"`, `instructor_name="TBD"` をセットして作成。
+- `SurveyBatch` を `batch_type="preliminary"` で1件生成し、IDをレスポンスおよびタスクIDとして使用。
 
-Celeryワーカーが各コメントをLLM APIに送信して分析。
+### 3. 非同期タスク投入（API→Worker）
+- APIは `process_uploaded_file.delay(batch_id, s3_key)` を即時実行し、以降の処理はCeleryワーカーに委譲。
+- 進捗テーブルは存在せず、`SurveySummary` の有無で完了判定。`GET /api/v1/uploads/{batch_id}/status` はDB照会だけで応答。
 
-#### 5.1 感情分析
+### 4. Upload Pipeline（Worker内）
+すべて `process_uploaded_file` タスクで完結し、HTTPリクエストは既に応答済みです。
 
-```python
-llm_sentiment_type = analyze_sentiment(comment_text)
-# 結果: "positive" / "neutral" / "negative"
-```
-
-#### 5.2 カテゴリ分類
-
-```python
-llm_category = categorize_comment(comment_text)
-# 結果: "instructor" / "operation" / "material" / "content" / "other"
-```
-
-#### 5.3 重要度評価
+#### 4.1 SurveyBatch取得とCSVロード
+- ワーカーは `survey_batch_id` とストレージURIを受け取り、既存 `Lecture`/`SurveyBatch` を再参照。
+- URI経由でCSV本体をダウンロードし、`analyze_and_store_comments()` に渡す。
 
 ```python
-llm_importance_level = evaluate_importance(comment_text)
-# 結果: "high" / "medium" / "low"
-```
+survey_batch = (
+    db.query(SurveyBatch)
+    .options(joinedload(SurveyBatch.lecture))
+    .filter(SurveyBatch.id == batch_id)
+    .first()
+)
+if not survey_batch:
+    raise RuntimeError(f"Batch {batch_id} not found")
 
-#### 5.4 不適切判定
-
-```python
-llm_is_abusive = detect_abusive(comment_text)
-# 結果: True / False
-```
-
-#### 5.5 結果をDBに保存
-
-```python
-update_comment_analysis(
-    comment_id=comment.id,
-    llm_sentiment_type=llm_sentiment_type,
-    llm_category=llm_category,
-    llm_importance_level=llm_importance_level,
-    llm_is_abusive=llm_is_abusive,
-    is_analyzed=True
+content_bytes = storage_client.load(s3_key)
+_ = analyze_and_store_comments(
+    db=db,
+    survey_batch=survey_batch,
+    content_bytes=content_bytes,
 )
 ```
 
-**更新テーブル**: `response_comments`
+#### 4.2 SurveyResponse生成
+- `score_column_map` で列→モデル属性を定義し、各行を `SurveyResponse` に変換。
+- 12種のスコア列は `nullable=False`。空文字や非数値が含まれると `IntegrityError` でロールバックされるため、CSVは0-10/1-5の数値のみ許容。
 
-### 6. 集計処理
+#### 4.3 ResponseComment生成
+- `（任意）` / `【必須】` で始まる自由記述列を抽出し、`ResponseComment` を作成。
+- `（任意）` 列のみ `analyze_comment()` でLLM解析を実施し、感情・カテゴリ・重要度・リスクを `llm_*` カラムへ保存。解析は即時完了し、`analysis_version="preliminary"` を付与。
 
-全コメントの分析完了後、集計テーブルを更新。
+### 5. LLM分析
+- `app/analysis/analyzer.py` が sentiment / category / importance / risk を個別API呼び出しで取得し、スタブ含めて統合。
+- `ResponseComment` 作成時点で `llm_category`, `llm_sentiment_type`, `llm_importance_level`, `llm_is_abusive` を確定させるため、後続の更新処理は不要。
 
-#### 6.1 SurveySummary の作成
+### 6. 集計
+コメント解析完了後に3種の集計テーブルを更新します。
 
-学生属性ごとにNPSと平均スコアを計算。
+- **SurveySummary** (`survey_summaries`): 学生属性ごとのNPSと平均スコアを算出し、`avg_*` と `nps` カラムへ保存。
+- **ScoreDistribution** (`score_distributions`): 各質問の観測スコア値を `GROUP BY` でまとめ、ヒストグラム用データを生成。
+- **CommentSummary** (`comment_summaries`): 感情/カテゴリ/重要度別の件数を保持。重要コメントは `importance_medium + importance_high` を合算して再利用。
 
-```python
-# NPS計算
-promoters = count(score_recommend_friend >= 9)
-passives = count(7 <= score_recommend_friend <= 8)
-detractors = count(score_recommend_friend <= 6)
-nps = (promoters - detractors) / total * 100
+### 7. 結果取得（API層）
+- **講義一覧** `GET /api/v1/lectures` → `lectures` テーブル。ただし実装は旧カラムへ依存しており、利用前に修正が必要。
+- **コメント一覧** `GET /api/v1/courses/{course_name}/comments` → `response_comments`。`version` クエリで preliminary/final を切替。
+- **メトリクス** `GET/PUT /api/v1/uploads/{batch_id}/metrics` および `GET/PUT /api/v1/lectures/{lecture_id}/metrics` → `survey_batches.zoom_participants` / `recording_views` を管理。
+- **ダッシュボード** `GET /api/v1/dashboard/*` → 旧スキーマ（`lecture_number`, `nps_score` 等）を参照しており、現状は例外が発生。
+- **ステータス** `GET /api/v1/uploads/{batch_id}/status` → `SurveySummary` 有無と `ResponseComment` 件数で完了判定する設計だが、欠落カラム参照のため未修復。
 
-# 平均スコア計算
-avg_satisfaction_overall = mean(score_satisfaction_overall)
-# ... 各スコアの平均
-```
+## 既知の課題
 
-**作成テーブル**: `survey_summaries`
-
-#### 6.2 ScoreDistribution の作成
-
-各質問のスコア分布を集計（ヒストグラム用）。
-
-```python
-for question_key in SCORE_QUESTIONS:
-    for score_value in range(0, 11):
-        count = count_responses(question_key, score_value, student_attribute)
-        create_score_distribution(
-            survey_batch_id=batch.id,
-            student_attribute=attr,
-            question_key=question_key,
-            score_value=score_value,
-            count=count
-        )
-```
-
-**作成テーブル**: `score_distributions`
-
-#### 6.3 CommentSummary の作成
-
-感情・カテゴリごとのコメント件数を集計。
-
-```python
-# 感情別集計
-for sentiment in ['positive', 'neutral', 'negative']:
-    count = count_comments(sentiment_type=sentiment, student_attribute=attr)
-    create_comment_summary(
-        survey_batch_id=batch.id,
-        student_attribute=attr,
-        analysis_type='sentiment',
-        label=sentiment,
-        count=count
-    )
-
-# カテゴリ別集計
-for category in ['instructor', 'operation', 'material', 'content', 'other']:
-    count = count_comments(category=category, student_attribute=attr)
-    create_comment_summary(
-        survey_batch_id=batch.id,
-        student_attribute=attr,
-        analysis_type='category',
-        label=category,
-        count=count
-    )
-```
-
-**作成テーブル**: `comment_summaries`
-
-### 7. 結果取得
-
-クライアントが各APIエンドポイントでデータを取得。
-
-#### 講義一覧
-`GET /api/v1/lectures` → `lectures` テーブル
-
-#### コメント一覧
-`GET /api/v1/comments` → `response_comments` テーブル（LLM分析結果含む）
-
-#### メトリクス
-`GET /api/v1/metrics` → `survey_summaries`, `score_distributions`, `comment_summaries`
-
-#### ダッシュボード
-`GET /api/v1/dashboard` → 複数テーブルを統合したデータ
+1. **ステータスAPIのAttributeError**: `ResponseComment.survey_batch_id` が存在しないため、`SurveyResponse` とのJOINまたはカラム再導入が必須。
+2. **集計スキーマとの不整合**: `app/services/summary.py` が削除済み `score_*` カラムへ `setattr` しており、`avg_*` へ保存されない。
+3. **ダッシュボードAPIの旧スキーマ依存**: `SurveyBatch.lecture_number`, `SurveySummary.nps_score` などを参照しているため、`Lecture.session` と `SurveySummary.nps/avg_*` を使うよう改修するまで利用不可。
+4. **講義/コースAPIのフィールド不一致**: `Lecture.course_name` 等の不存在カラムを参照。削除処理でも `SurveyBatch.status` や `ResponseComment.survey_batch_id` を想定しており、JOIN見直しが必要。
+5. **削除フロー未完成**: アップロード/講義削除ともに `ResponseComment` のカスケードが機能せず、`analysis_version` 条件も未整理。
 
 ## エラーハンドリング
 
-### アップロード時のエラー
+- **アップロード**: CSV必須カラム欠如や型不一致で400。重複は `check-duplicate` で事前確認する運用。
+- **LLM分析**: API失敗・レート制限・HTTPXタイムアウトは警告ログを残して当該コメントをスキップ（retry/backoff未実装）。
 
-- **CSV形式エラー**: 必須カラムの欠落、データ型不一致 → 400 Bad Request
-- **重複エラー**: 同じ講義情報で既にバッチが存在 → 409 Conflict
+## パフォーマンス
 
-### LLM分析時のエラー
-
-- **API エラー**: リトライ処理（最大3回）
-- **タイムアウト**: 60秒でタイムアウト、エラーログ記録
-- **レート制限**: 指数バックオフでリトライ
-
-## パフォーマンス最適化
-
-### バッチ処理
-
-- コメント分析はバッチ単位で並列実行（最大10並列）
-- DB書き込みはバルクインサートを使用
-
-### キャッシング
-
-- 講義情報はRedisにキャッシュ（TTL: 1時間）
-- 集計結果もキャッシュ（TTL: 30分）
-
-### インデックス
-
-- `survey_batch_id` にインデックス（全子テーブル）
-- `lecture_id` にインデックス
-- `is_analyzed` にインデックス（未分析コメント検索用）
+- CSV1件につきCeleryタスク1件。並列度はワーカー数/キュー設定に依存。
+- DB挿入は1行ずつ `SurveyResponse` を追加し `db.flush()` でIDを確定（バルク未対応）。
+- 過去に存在した `survey_batch_id` / `lecture_id` / `is_analyzed` のインデックスは削除済み。必要ならAlembicで再追加するかビューで代替。
 
 ## 関連ドキュメント
 
 - [データベーススキーマ詳細](database.md)
 - [API エンドポイント一覧](api.md)
 - [開発ガイド](development.md)
-

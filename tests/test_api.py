@@ -8,6 +8,7 @@ import warnings
 from datetime import date, datetime
 from pathlib import Path
 from typing import Generator
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -133,6 +134,67 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
     )
     assert response.status_code == 200, response.text
     return response.json()["survey_batch_id"]
+
+
+def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: str) -> None:
+    lecture = models.Lecture(
+        academic_year=2024,
+        term="Spring",
+        name=course_name,
+        session="1",
+        lecture_on=date(2024, 5, 1),
+        instructor_name="Prof Filter",
+    )
+    db.add(lecture)
+    db.flush()
+
+    batch = models.SurveyBatch(lecture_id=lecture.id, uploaded_at=datetime(2024, 5, 1, 0, 0, 0))
+    db.add(batch)
+    db.flush()
+
+    score_defaults = {
+        "score_satisfaction_overall": 5,
+        "score_content_volume": 5,
+        "score_content_understanding": 5,
+        "score_content_announcement": 5,
+        "score_instructor_overall": 5,
+        "score_instructor_time": 5,
+        "score_instructor_qa": 5,
+        "score_instructor_speaking": 5,
+        "score_self_preparation": 5,
+        "score_self_motivation": 5,
+        "score_self_future": 5,
+        "score_recommend_friend": 10,
+    }
+
+    def _add_comment(account_suffix: str, comment_text: str, importance: str) -> None:
+        survey_response = models.SurveyResponse(
+            survey_batch_id=batch.id,
+            account_id=f"user-{account_suffix}",
+            student_attribute="ALL",
+            **score_defaults,
+        )
+        db.add(survey_response)
+        db.flush()
+
+        db.add(
+            models.ResponseComment(
+                response_id=survey_response.id,
+                question_type="（任意）講義全体のコメント",
+                comment_text=comment_text,
+                llm_category="content",
+                llm_sentiment_type="positive",
+                llm_importance_level=importance,
+                llm_is_abusive=False,
+                is_analyzed=True,
+                analysis_version="preliminary",
+            )
+        )
+
+    _add_comment("high", "Critical action item", "high")
+    _add_comment("medium", "Should adjust pace", "medium")
+    _add_comment("low", "Need better slides", "low")
+    db.commit()
 
 
 # ============================================================================
@@ -450,3 +512,35 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
     resp = client.delete(f"/api/v1/uploads/{batch_id}")
     # ステータスがPROCESSING (Summaryがない) なので削除拒否されるはず
     assert resp.status_code == 409
+
+
+def test_course_comments_important_only_filter(client: TestClient) -> None:
+    course_name = "Filter Course"
+    db = session_module.SessionLocal()
+    try:
+        _seed_comments_for_filter(db, course_name=course_name)
+    finally:
+        db.close()
+
+    encoded_course = quote(course_name, safe="")
+    important_resp = client.get(
+        f"/api/v1/courses/{encoded_course}/comments",
+        params={"important_only": True},
+    )
+    assert important_resp.status_code == 200
+    important_body = important_resp.json()
+    assert len(important_body) == 2
+    assert {item["llm_importance_level"] for item in important_body} == {
+        "high",
+        "medium",
+    }
+
+    low_only_resp = client.get(
+        f"/api/v1/courses/{encoded_course}/comments",
+        params={"importance": "low"},
+    )
+    assert low_only_resp.status_code == 200
+    low_body = low_only_resp.json()
+    assert len(low_body) == 1
+    assert low_body[0]["llm_importance_level"] == "low"
+    assert low_body[0]["comment_text"] == "Need better slides"
