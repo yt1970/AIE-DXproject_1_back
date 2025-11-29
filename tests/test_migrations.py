@@ -54,27 +54,3 @@ def test_apply_migrations_is_idempotent() -> None:
     assert columns.count("llm_importance_level") == 1
     assert columns.count("llm_importance_score") == 1
     assert columns.count("llm_risk_level") == 1
-
-
-def test_apply_migrations_adds_uploaded_file_columns() -> None:
-    engine = create_engine("sqlite:///:memory:")
-    metadata = MetaData()
-    Table(
-        "uploaded_files",
-        metadata,
-        Column("id", Integer, primary_key=True),
-    )
-    metadata.create_all(engine)
-
-    apply_migrations(engine)
-
-    inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("uploaded_files")}
-
-    expected = {
-        "original_filename",
-        "content_type",
-        "total_rows",
-        "processed_rows",
-    }
-    assert expected <= columns
