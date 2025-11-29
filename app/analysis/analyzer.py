@@ -18,7 +18,7 @@ class CommentAnalysisResult:
     def __init__(
         self,
         is_improvement_needed: bool,
-        is_slanderous: bool,
+        is_abusive: bool,
         sentiment_normalized: SentimentType,
         *,
         llm_result: llm_analyzer.LLMAnalysisResult,
@@ -28,7 +28,7 @@ class CommentAnalysisResult:
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
-        self.is_slanderous = is_slanderous
+        self.is_abusive = is_abusive
         self.sentiment_normalized = sentiment_normalized
         # LLM分析結果の詳細情報
         self.category_normalized = category_normalized
@@ -61,7 +61,7 @@ class CommentAnalysisResult:
         return (
             "CommentAnalysisResult("
             f"is_improvement_needed={self.is_improvement_needed}, "
-            f"is_slanderous={self.is_slanderous}, "
+            f"is_abusive={self.is_abusive}, "
             f"sentiment={self.sentiment_normalized.value}, "
             f"category={self.category_normalized.value}, "
             f"importance={self.importance_normalized.value if self.importance_normalized else None}, "
@@ -122,8 +122,8 @@ def analyze_comment(
     final_importance_score = scoring.determine_importance_score(llm_structured)
     is_improvement_needed = final_importance_score > 0.4
 
-    # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
-    is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
+    # is_abusive: 安全性チェックモジュールで誹謗中傷を判定
+    is_abusive = not safety.is_comment_safe(comment_text, llm_structured)
     
     # LLMの処理が走らなかった場合の処理を行っている。キーワード一致での予測を行っている。
     category_guess, sentiment_guess = aggregation.classify_comment(
@@ -151,7 +151,7 @@ def analyze_comment(
 
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
-        is_slanderous=is_slanderous,
+        is_abusive=is_abusive,
         sentiment_normalized=sentiment_enum,
         category_normalized=category_enum,
         importance_normalized=importance_enum,

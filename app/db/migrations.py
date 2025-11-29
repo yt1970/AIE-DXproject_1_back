@@ -5,6 +5,7 @@ from typing import List, Sequence, Set
 
 from sqlalchemy import (
     TIMESTAMP,
+    Boolean,
     Column,
     Float,
     ForeignKey,
@@ -140,29 +141,7 @@ def apply_migrations(engine: Engine) -> None:
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
-    # uploaded_file -> uploaded_files リネーム
-    if "uploaded_file" in table_names and "uploaded_files" not in table_names:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE uploaded_file RENAME TO uploaded_files"))
-        inspector = inspect(engine)
-        table_names = inspector.get_table_names()
-
-    if "uploaded_files" in table_names:
-        uploaded_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("uploaded_files")
-        }
-        _apply_statements(
-            engine,
-            _build_uploaded_file_migrations(uploaded_columns),
-            table="uploaded_files",
-        )
-        inspector = inspect(engine)
-        uploaded_columns = {column["name"] for column in inspector.get_columns("uploaded_files")}
-        if "upload_timestamp" in uploaded_columns and engine.dialect.name == "sqlite":
-            _rebuild_uploaded_files_without_upload_timestamp(engine)
-    # lecture_metricsテーブルが無ければ作成
-    if "lecture_metrics" not in table_names:
-        _create_lecture_metrics_table(engine)
+    # uploaded_files と lecture_metrics テーブルは現在のスキーマに存在しないため、削除
 
     # lecturesテーブルが無ければ作成、あれば不足カラムを追加
     if "lectures" not in table_names:
@@ -251,59 +230,7 @@ def _apply_statements(engine: Engine, statements: List[str], *, table: str) -> N
     )
 
 
-def _rebuild_uploaded_files_without_upload_timestamp(engine: Engine) -> None:
-    """SQLiteではDROP COLUMN未サポートの環境向けにuploaded_filesを再作成する。"""
-    with engine.begin() as connection:
-        connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(text("ALTER TABLE uploaded_files RENAME TO uploaded_files__old"))
-        connection.execute(
-            text(
-                """
-            CREATE TABLE uploaded_files (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                course_name VARCHAR(255) NOT NULL,
-                lecture_date DATE NOT NULL,
-                lecture_number INTEGER NOT NULL,
-                academic_year VARCHAR(10),
-                period VARCHAR(100),
-                status VARCHAR(20) NOT NULL,
-                s3_key VARCHAR(512),
-                uploaded_at TIMESTAMP NOT NULL,
-                original_filename VARCHAR(255),
-                content_type VARCHAR(100),
-                total_rows INTEGER,
-                processed_rows INTEGER,
-                task_id VARCHAR(255),
-                lecture_id INTEGER REFERENCES lectures(id),
-                processing_started_at TIMESTAMP,
-                processing_completed_at TIMESTAMP,
-                error_message TEXT,
-                finalized_at TIMESTAMP,
-                CONSTRAINT uq_course_lecture_instance UNIQUE (course_name, lecture_date, lecture_number)
-            )
-            """
-            )
-        )
-        connection.execute(
-            text(
-                """
-            INSERT INTO uploaded_files (
-                id, course_name, lecture_date, lecture_number, academic_year, period,
-                status, s3_key, uploaded_at, original_filename, content_type,
-                total_rows, processed_rows, task_id, lecture_id,
-                processing_started_at, processing_completed_at, error_message, finalized_at
-            )
-            SELECT
-                id, course_name, lecture_date, lecture_number, academic_year, period,
-                status, s3_key, uploaded_at, original_filename, content_type,
-                total_rows, processed_rows, task_id, lecture_id,
-                processing_started_at, processing_completed_at, error_message, finalized_at
-            FROM uploaded_files__old
-            """
-            )
-        )
-        connection.execute(text("DROP TABLE uploaded_files__old"))
-        connection.execute(text("PRAGMA foreign_keys=ON"))
+
 
 
 def _rebuild_survey_batches_without_upload_timestamp(engine: Engine) -> None:
@@ -316,25 +243,11 @@ def _rebuild_survey_batches_without_upload_timestamp(engine: Engine) -> None:
                 """
             CREATE TABLE survey_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uploaded_file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_files(id),
-                lecture_id INTEGER REFERENCES lectures(id),
-                course_name VARCHAR(255) NOT NULL,
-                lecture_date DATE NOT NULL,
-                lecture_number INTEGER NOT NULL,
-                academic_year VARCHAR(10),
-                period VARCHAR(100),
+                lecture_id INTEGER NOT NULL REFERENCES lectures(id),
                 batch_type VARCHAR(20) DEFAULT 'preliminary' NOT NULL,
                 zoom_participants INTEGER,
                 recording_views INTEGER,
-                status VARCHAR(20) NOT NULL,
-                uploaded_at TIMESTAMP NOT NULL,
-                processing_started_at TIMESTAMP,
-                processing_completed_at TIMESTAMP,
-                finalized_at TIMESTAMP,
-                error_message TEXT,
-                total_responses INTEGER,
-                total_comments INTEGER,
-                CONSTRAINT uq_survey_batch_identity UNIQUE (course_name, lecture_date, lecture_number)
+                uploaded_at TIMESTAMP NOT NULL
             )
             """
             )
@@ -343,14 +256,10 @@ def _rebuild_survey_batches_without_upload_timestamp(engine: Engine) -> None:
             text(
                 """
             INSERT INTO survey_batches (
-                id, uploaded_file_id, lecture_id, course_name, lecture_date, lecture_number,
-                academic_year, period, status, uploaded_at, processing_started_at,
-                processing_completed_at, finalized_at, error_message, total_responses, total_comments
+                id, lecture_id, batch_type, zoom_participants, recording_views, uploaded_at
             )
             SELECT
-                id, uploaded_file_id, lecture_id, course_name, lecture_date, lecture_number,
-                academic_year, period, status, uploaded_at, processing_started_at,
-                processing_completed_at, finalized_at, error_message, total_responses, total_comments
+                id, lecture_id, batch_type, zoom_participants, recording_views, uploaded_at
             FROM survey_batches__old
             """
             )
@@ -401,11 +310,6 @@ def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
     """survey_response向けALTER TABLE文を生成する。"""
     statements: List[str] = []
 
-    if "file_id" in existing_columns and "uploaded_file_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_responses RENAME COLUMN file_id TO uploaded_file_id"
-        )
-
     if "survey_batch_id" not in existing_columns:
         statements.append(
             "ALTER TABLE survey_responses ADD COLUMN survey_batch_id INTEGER REFERENCES survey_batches(id)"
@@ -451,25 +355,16 @@ def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
 
 def _build_survey_batch_migrations(existing_columns: Set[str]) -> List[str]:
     statements: List[str] = []
-    if "file_id" in existing_columns and "uploaded_file_id" not in existing_columns:
-        statements.append("ALTER TABLE survey_batches RENAME COLUMN file_id TO uploaded_file_id")
-    if "uploaded_at" not in existing_columns and "upload_timestamp" in existing_columns:
-        statements.append("ALTER TABLE survey_batches ADD COLUMN uploaded_at TIMESTAMP")
-        statements.append(
-            "UPDATE survey_batches SET uploaded_at = upload_timestamp WHERE uploaded_at IS NULL"
-        )
-    if "upload_timestamp" in existing_columns:
-        statements.append("ALTER TABLE survey_batches DROP COLUMN upload_timestamp")
-    if "status" not in existing_columns and "processing_status" in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_batches RENAME COLUMN processing_status TO status"
-        )
+    if "lecture_id" not in existing_columns:
+        statements.append("ALTER TABLE survey_batches ADD COLUMN lecture_id INTEGER NOT NULL REFERENCES lectures(id)")
     if "batch_type" not in existing_columns:
-        statements.append("ALTER TABLE survey_batches ADD COLUMN batch_type VARCHAR(20) DEFAULT 'preliminary'")
+        statements.append("ALTER TABLE survey_batches ADD COLUMN batch_type VARCHAR(20) DEFAULT 'preliminary' NOT NULL")
     if "zoom_participants" not in existing_columns:
         statements.append("ALTER TABLE survey_batches ADD COLUMN zoom_participants INTEGER")
     if "recording_views" not in existing_columns:
         statements.append("ALTER TABLE survey_batches ADD COLUMN recording_views INTEGER")
+    if "uploaded_at" not in existing_columns:
+        statements.append("ALTER TABLE survey_batches ADD COLUMN uploaded_at TIMESTAMP NOT NULL")
     return statements
 
 
@@ -489,10 +384,6 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE response_comments ADD COLUMN question_type VARCHAR(50) NOT NULL")
     else:
         statements.append("ALTER TABLE response_comments ALTER COLUMN question_type SET NOT NULL")
-    if "file_id" in existing_columns and "uploaded_file_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments RENAME COLUMN file_id TO uploaded_file_id"
-        )
     if "question_text" not in existing_columns:
         statements.append("ALTER TABLE response_comments ADD COLUMN question_text TEXT")
     if "response_id" not in existing_columns:
@@ -538,60 +429,7 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
     return statements
 
 
-def _build_uploaded_file_migrations(existing_columns: Set[str]) -> List[str]:
-    """uploaded_files向けALTER TABLE文を生成する。"""
-    statements: List[str] = []
 
-    if "id" not in existing_columns and "file_id" in existing_columns:
-        statements.append("ALTER TABLE uploaded_files RENAME COLUMN file_id TO id")
-
-    if "status" not in existing_columns and "processing_status" in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_files RENAME COLUMN processing_status TO status"
-        )
-
-    if "uploaded_at" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_files ADD COLUMN uploaded_at TIMESTAMP")
-        if "upload_timestamp" in existing_columns:
-            statements.append(
-                "UPDATE uploaded_files SET uploaded_at = upload_timestamp WHERE uploaded_at IS NULL"
-            )
-    if "upload_timestamp" in existing_columns:
-        statements.append("ALTER TABLE uploaded_files DROP COLUMN upload_timestamp")
-
-    if "original_filename" not in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_files ADD COLUMN original_filename VARCHAR(255)"
-        )
-
-    if "content_type" not in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_files ADD COLUMN content_type VARCHAR(100)"
-        )
-
-    if "total_rows" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_files ADD COLUMN total_rows INTEGER")
-
-    if "processed_rows" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_files ADD COLUMN processed_rows INTEGER")
-
-    if "finalized_at" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_files ADD COLUMN finalized_at TIMESTAMP")
-
-    if "lecture_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_files ADD COLUMN lecture_id INTEGER REFERENCES lectures(id)"
-        )
-
-    if "academic_year" not in existing_columns:
-        statements.append(
-            "ALTER TABLE uploaded_files ADD COLUMN academic_year VARCHAR(10)"
-        )
-
-    if "period" not in existing_columns:
-        statements.append("ALTER TABLE uploaded_files ADD COLUMN period VARCHAR(100)")
-
-    return statements
 
 
 def _build_comment_summary_migrations(existing_columns: Set[str]) -> List[str]:
@@ -634,8 +472,8 @@ def _build_lecture_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("UPDATE lectures SET name = course_name WHERE name IS NULL")
     if "session" not in existing_columns:
         statements.append("ALTER TABLE lectures ADD COLUMN session VARCHAR(50)")
-    if "lecture_date" not in existing_columns:
-        statements.append("ALTER TABLE lectures ADD COLUMN lecture_date DATE")
+    if "lecture_on" not in existing_columns:
+        statements.append("ALTER TABLE lectures ADD COLUMN lecture_on DATE")
     if "instructor_name" not in existing_columns:
         statements.append("ALTER TABLE lectures ADD COLUMN instructor_name VARCHAR(255)")
     if "description" not in existing_columns:
@@ -669,18 +507,14 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         "comment__new",
         metadata,
         Column("id", Integer, primary_key=True, autoincrement=True),
-        Column("file_id", Integer, ForeignKey("uploaded_files.id"), nullable=False),
-        Column("score_satisfaction_overall", Integer),
+        Column("response_id", Integer, ForeignKey("survey_responses.id"), nullable=False),
+        Column("question_type", String(50), nullable=False),
         Column("comment_text", Text, nullable=False),
         Column("llm_category", String(50)),
-        Column("llm_sentiment", String(20)),
-        Column("llm_summary", Text),
+        Column("llm_sentiment_type", String(20)),
         Column("llm_importance_level", String(20)),
-        Column("llm_importance_score", Float),
-        Column("llm_risk_level", String(20)),
-        Column("llm_is_abusive", String(5)),
-        Column("processed_at", TIMESTAMP),
-        Column("analysis_version", String(20)),
+        Column("llm_is_abusive", Boolean),
+        Column("is_analyzed", Boolean),
     )
 
     comment_text_source = None
@@ -691,20 +525,17 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
 
     select_stmt = select(
         old_comment.c["id"],
-        old_comment.c["file_id"],
-        _safe_column(old_comment, "score_satisfaction_overall", existing_columns),
+        _safe_column(old_comment, "response_id", existing_columns),
+        _safe_column(old_comment, "question_type", existing_columns),
         func.coalesce(
             comment_text_source if comment_text_source is not None else literal(""),
             literal(""),
         ).label("comment_text"),
         _safe_column(old_comment, "llm_category", existing_columns),
-        _safe_column(old_comment, "llm_sentiment", existing_columns),
-        _safe_column(old_comment, "llm_summary", existing_columns),
+        _safe_column(old_comment, "llm_sentiment_type", existing_columns),
         _safe_column(old_comment, "llm_importance_level", existing_columns),
-        _safe_column(old_comment, "llm_importance_score", existing_columns),
-        _safe_column(old_comment, "llm_risk_level", existing_columns),
         _safe_column(old_comment, "llm_is_abusive", existing_columns),
-        _safe_column(old_comment, "processed_at", existing_columns),
+        _safe_column(old_comment, "is_analyzed", existing_columns),
     )
 
     with engine.begin() as connection:
@@ -716,18 +547,14 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
             temp_table.insert().from_select(
                 [
                     "id",
-                    "file_id",
-                    "score_satisfaction_overall",
+                    "response_id",
+                    "question_type",
                     "comment_text",
                     "llm_category",
-                    "llm_sentiment",
-                    "llm_summary",
+                    "llm_sentiment_type",
                     "llm_importance_level",
-                    "llm_importance_score",
-                    "llm_risk_level",
                     "llm_is_abusive",
-                    "processed_at",
-                    "analysis_version",
+                    "is_analyzed",
                 ],
                 select_stmt,
             )
@@ -763,22 +590,7 @@ def _recreate_survey_summary_table(engine: Engine) -> None:
     _create_survey_summary_table(engine)
 
 
-def _create_lecture_metrics_table(engine: Engine) -> None:
-    with engine.begin() as connection:
-        logger.info("Creating table 'lecture_metrics'.")
-        connection.execute(
-            text(
-                """
-            CREATE TABLE lecture_metrics (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uploaded_file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_files(id),
-                zoom_participants INTEGER,
-                recording_views INTEGER,
-                updated_at TIMESTAMP
-            )
-            """
-            )
-        )
+
 
 
 def _create_lecture_table(engine: Engine) -> None:
@@ -795,13 +607,13 @@ def _create_lecture_table(engine: Engine) -> None:
                 term VARCHAR(50),
                 name VARCHAR(255),
                 session VARCHAR(50),
-                lecture_date DATE,
+                lecture_on DATE,
                 instructor_name VARCHAR(255),
                 description TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 category VARCHAR(20),
-                CONSTRAINT uq_lecture_identity UNIQUE (name, academic_year, term, session, lecture_date)
+                CONSTRAINT uq_lecture_identity UNIQUE (name, academic_year, term, session, lecture_on)
             )
             """
             )
@@ -822,22 +634,11 @@ def _create_survey_batches_table(engine: Engine) -> None:
                 """
             CREATE TABLE survey_batches (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                uploaded_file_id INTEGER NOT NULL UNIQUE REFERENCES uploaded_files(id),
-                lecture_id INTEGER REFERENCES lecture(id),
-                course_name VARCHAR(255) NOT NULL,
-                lecture_date DATE NOT NULL,
-                lecture_number INTEGER NOT NULL,
-                academic_year VARCHAR(10),
-                period VARCHAR(100),
-                status VARCHAR(20) NOT NULL,
-                uploaded_at TIMESTAMP NOT NULL,
-                processing_started_at TIMESTAMP,
-                processing_completed_at TIMESTAMP,
-                finalized_at TIMESTAMP,
-                error_message TEXT,
-                total_responses INTEGER,
-                total_comments INTEGER,
-                CONSTRAINT uq_survey_batch_identity UNIQUE (course_name, lecture_date, lecture_number)
+                lecture_id INTEGER NOT NULL REFERENCES lectures(id),
+                batch_type VARCHAR(20) DEFAULT 'preliminary' NOT NULL,
+                zoom_participants INTEGER,
+                recording_views INTEGER,
+                uploaded_at TIMESTAMP NOT NULL
             )
             """
             )
@@ -846,37 +647,31 @@ def _create_survey_batches_table(engine: Engine) -> None:
 
 def _create_survey_summary_table(engine: Engine) -> None:
     with engine.begin() as connection:
-        logger.info("Creating table 'survey_summary'.")
+        logger.info("Creating table 'survey_summaries'.")
         connection.execute(
             text(
                 """
             CREATE TABLE survey_summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 survey_batch_id INTEGER NOT NULL REFERENCES survey_batches(id),
-                analysis_version VARCHAR(20) NOT NULL DEFAULT 'preliminary',
-                student_attribute VARCHAR(50),
-                score_overall_satisfaction FLOAT,
-                score_content_volume FLOAT,
-                score_content_understanding FLOAT,
-                score_content_announcement FLOAT,
-                score_instructor_overall FLOAT,
-                score_instructor_time FLOAT,
-                score_instructor_qa FLOAT,
-                score_instructor_speaking FLOAT,
-                score_self_preparation FLOAT,
-                score_self_motivation FLOAT,
-                score_self_future FLOAT,
-                nps_score FLOAT,
-                nps_promoters INTEGER,
-                nps_passives INTEGER,
-                nps_detractors INTEGER,
-                nps_total INTEGER,
-                response_count INTEGER,
-                comments_count INTEGER,
-                important_comments_count INTEGER,
-                updated_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT uq_survey_summary_batch_version UNIQUE (survey_batch_id, analysis_version, student_attribute)
+                student_attribute VARCHAR(50) NOT NULL,
+                response_count INTEGER NOT NULL,
+                nps DECIMAL(5, 2),
+                promoter_count INTEGER NOT NULL DEFAULT 0,
+                passive_count INTEGER NOT NULL DEFAULT 0,
+                detractor_count INTEGER NOT NULL DEFAULT 0,
+                avg_satisfaction_overall DECIMAL(3, 2),
+                avg_content_volume DECIMAL(3, 2),
+                avg_content_understanding DECIMAL(3, 2),
+                avg_content_announcement DECIMAL(3, 2),
+                avg_instructor_overall DECIMAL(3, 2),
+                avg_instructor_time DECIMAL(3, 2),
+                avg_instructor_qa DECIMAL(3, 2),
+                avg_instructor_speaking DECIMAL(3, 2),
+                avg_self_preparation DECIMAL(3, 2),
+                avg_self_motivation DECIMAL(3, 2),
+                avg_self_future DECIMAL(3, 2),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
             )
@@ -892,13 +687,12 @@ def _create_comment_summary_table(engine: Engine) -> None:
             CREATE TABLE comment_summaries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 survey_batch_id INTEGER NOT NULL REFERENCES survey_batches(id),
-                analysis_version VARCHAR(20) NOT NULL DEFAULT 'preliminary',
-                student_attribute VARCHAR(50) NOT NULL DEFAULT 'ALL',
+                student_attribute VARCHAR(50) NOT NULL,
                 analysis_type VARCHAR(20) NOT NULL,
                 label VARCHAR(50) NOT NULL,
                 count INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                CONSTRAINT uq_comment_summary_entry UNIQUE (survey_batch_id, analysis_version, student_attribute, analysis_type, label)
+                CONSTRAINT uq_comment_summary_entry UNIQUE (survey_batch_id, student_attribute, analysis_type, label)
             )
             """
             )
@@ -918,6 +712,7 @@ def _create_score_distribution_table(engine: Engine) -> None:
                 question_key VARCHAR(50) NOT NULL,
                 score_value INTEGER NOT NULL,
                 count INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 CONSTRAINT uq_score_distribution_entry UNIQUE (survey_batch_id, student_attribute, question_key, score_value)
             )
             """

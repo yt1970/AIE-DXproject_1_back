@@ -401,6 +401,7 @@ def delete_uploaded_by_identity(
         # 旧API互換: analysis_version が指定されている場合は、コメントのみを削除対象とし、
         # SurveySummary / CommentSummary / SurveyBatch は保持する。
         # （analysis_version カラムは廃止済みのため、追加フィルタは行わない）
+        pass
 
     db.commit()
     return DeleteUploadResponse(

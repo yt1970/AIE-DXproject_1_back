@@ -187,7 +187,6 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
                 llm_importance_level=importance,
                 llm_is_abusive=False,
                 is_analyzed=True,
-                analysis_version="preliminary",
             )
         )
 

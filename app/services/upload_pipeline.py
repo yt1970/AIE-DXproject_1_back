@@ -139,8 +139,7 @@ def analyze_and_store_comments(
                     if analysis_result.importance_normalized
                     else None
                 ),
-                llm_is_abusive=analysis_result.risk_level_normalized
-                == models.RiskLevelType.flag,
+                llm_is_abusive=analysis_result.is_abusive,
                 is_analyzed=True,
             )
 

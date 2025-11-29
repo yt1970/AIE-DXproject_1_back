@@ -264,9 +264,8 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
                 comment_text=f"comment {idx}",
                 llm_sentiment_type=sentiment,
                 llm_category=category,
-            llm_importance_level=importance,
-            analysis_version="preliminary",
-        )
+                llm_importance_level=importance,
+            )
         for idx, (sentiment, category, importance) in enumerate(
             [
                 ("positive", "講義内容", "medium"),
@@ -318,6 +317,7 @@ class _DummyAnalysis:
         self.importance_score = 0.8
         self.risk_level_normalized = _DummyEnum("low")
         self.sentiment_normalized = _DummyEnum(sentiment_value)
+        self.is_abusive = False
         self.warnings: List[str] = []
 
 
