@@ -53,10 +53,8 @@ class DummySession:
     def __init__(
         self,
         *,
-        file_record: models.UploadedFile | None,
         survey_batch: models.SurveyBatch | None = None,
     ) -> None:
-        self.file_record = file_record
         self.survey_batch = survey_batch
         self.closed = False
         self.commits = 0
@@ -64,7 +62,7 @@ class DummySession:
         self.added = []
 
     def get(self, _model, _pk):
-        return self.file_record
+        return self.survey_batch
 
     def query(self, _model):
         return DummyQuery(self)
@@ -85,33 +83,11 @@ class DummySession:
         self.closed = True
 
 
-def _make_uploaded_file() -> models.UploadedFile:
-    return models.UploadedFile(
-        file_id=1,
-        course_name="Intro to Robotics",
-        lecture_date=date(2024, 1, 1),
-        lecture_number=1,
-        academic_year="2024",
-        period="Q1",
-        status="QUEUED",
-        s3_key="local://uploads/file.csv",
-        upload_timestamp=datetime.now(UTC),
-        lecture_id=42,
-    )
-
-
-def _make_survey_batch(file_record: models.UploadedFile) -> models.SurveyBatch:
+def _make_survey_batch() -> models.SurveyBatch:
     batch = models.SurveyBatch(
         id=99,
-        file_id=file_record.file_id,
-        lecture_id=file_record.lecture_id,
-        course_name=file_record.course_name,
-        lecture_date=file_record.lecture_date,
-        lecture_number=file_record.lecture_number,
-        academic_year=file_record.academic_year,
-        period=file_record.period,
-        status="QUEUED",
-        upload_timestamp=file_record.upload_timestamp,
+        lecture_id=42,
+        uploaded_at=datetime.now(UTC),
     )
     return batch
 
@@ -129,23 +105,22 @@ def _prepare_task_request():
 
 def test_process_uploaded_file_returns_missing_when_file_not_found(monkeypatch):
     _prepare_task_request()
-    session = DummySession(file_record=None)
+    session = DummySession(survey_batch=None)
     monkeypatch.setattr(tasks.db_session, "SessionLocal", lambda: session)
 
     dummy_storage = SimpleNamespace(load=lambda uri: b"")
     monkeypatch.setattr(tasks, "get_storage_client", lambda: dummy_storage)
 
-    result = tasks.process_uploaded_file.run(file_id=12345)
+    result = tasks.process_uploaded_file.run(batch_id=12345, s3_key="mock_key")
 
-    assert result == {"file_id": 12345, "status": "missing"}
+    assert result == {"batch_id": 12345, "status": "missing"}
     assert session.closed
 
 
 def test_process_uploaded_file_happy_path(monkeypatch):
     _prepare_task_request()
-    file_record = _make_uploaded_file()
-    survey_batch = _make_survey_batch(file_record)
-    session = DummySession(file_record=file_record, survey_batch=survey_batch)
+    survey_batch = _make_survey_batch()
+    session = DummySession(survey_batch=survey_batch)
     monkeypatch.setattr(tasks.db_session, "SessionLocal", lambda: session)
 
     storage_client = SimpleNamespace(load=MagicMock(return_value=b"csv-bytes"))
@@ -157,15 +132,14 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     summary_mock = MagicMock()
     monkeypatch.setattr(tasks, "compute_and_upsert_summaries", summary_mock)
 
-    result = tasks.process_uploaded_file.run(file_id=file_record.file_id)
+    result = tasks.process_uploaded_file.run(batch_id=survey_batch.id, s3_key="mock_key")
 
-    storage_client.load.assert_called_once_with(uri=file_record.s3_key)
+    storage_client.load.assert_called_once_with(uri="mock_key")
     analyze_mock.assert_called_once()
     summary_mock.assert_called_once()
     assert result["status"] == tasks.COMPLETED_STATUS
     assert result["batch_id"] == survey_batch.id
     assert result["processed_comments"] == 5
-    assert session.commits == 3
+    assert session.commits == 2 # Removed status update commits
     assert session.closed
-    assert file_record.status == tasks.COMPLETED_STATUS
-    assert survey_batch.status == tasks.COMPLETED_STATUS
+    # Status checks removed as status column is removed/not updated in task

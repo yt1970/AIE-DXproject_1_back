@@ -26,10 +26,10 @@ NEGATIVE_KEYWORDS = (
     "嫌",
     "最悪",
 )
-# 4分類への正規化用キーワード
-FOUR_CATEGORY_KEYWORDS = {
-    "講義資料": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
-    "運営": (
+# カテゴリ正規化用キーワード
+CATEGORY_KEYWORDS = {
+    "material": ("資料", "スライド", "配布", "教材", "pdf", "テキスト"),
+    "operation": (
         "運営",
         "アナウンス",
         "連絡",
@@ -41,7 +41,8 @@ FOUR_CATEGORY_KEYWORDS = {
         "会場",
         "受付",
     ),
-    "講義内容": (
+    "instructor": ("講師", "先生", "話し方", "音声"),
+    "content": (
         "内容",
         "説明",
         "構成",
@@ -66,11 +67,14 @@ def classify_comment(
     return category, sentiment
 
 
-def _normalize_to_four_categories(source: str) -> str | None:
+def _normalize_to_categories(source: str) -> str | None:
     if not source:
         return None
-    lowered = source.lower()
-    for cat, keywords in FOUR_CATEGORY_KEYWORDS.items():
+    lowered = source.strip().lower()
+    # 既に正規化済みの英語コードが来た場合はそのまま返す
+    if lowered in CATEGORY_KEYWORDS:
+        return lowered
+    for cat, keywords in CATEGORY_KEYWORDS.items():
         for kw in keywords:
             if kw in source or kw.lower() in lowered:
                 return cat
@@ -79,13 +83,13 @@ def _normalize_to_four_categories(source: str) -> str | None:
 
 
 def _determine_category(comment_text: str, llm_output: LLMAnalysisResult) -> str:
-    # まずLLMのカテゴリを4分類に正規化する試み
-    normalized = _normalize_to_four_categories(llm_output.category or "")
+    # まずLLMのカテゴリを正規化する試み
+    normalized = _normalize_to_categories(llm_output.category or "")
     if normalized:
         return normalized
 
     # LLMカテゴリが空/不明なら、本文から推定
-    normalized_from_text = _normalize_to_four_categories(comment_text)
+    normalized_from_text = _normalize_to_categories(comment_text)
     if normalized_from_text:
         return normalized_from_text
 

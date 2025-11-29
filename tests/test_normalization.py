@@ -107,13 +107,13 @@ class TestImportanceNormalization:
         assert _normalize_importance("Medium") == ImportanceType.medium
 
     def test_normalize_empty_string(self):
-        """空文字列は other にフォールバックする"""
-        assert _normalize_importance("") == ImportanceType.other
-        assert _normalize_importance(None) == ImportanceType.other
+        """空文字列は None（DB 上は NULL）にフォールバックする"""
+        assert _normalize_importance("") is None
+        assert _normalize_importance(None) is None
 
     def test_normalize_unknown_value(self):
-        """未知の値は other にフォールバックする"""
-        assert _normalize_importance("unknown") == ImportanceType.other
+        """未知の値は None（DB 上は NULL）にフォールバックする"""
+        assert _normalize_importance("unknown") is None
 
 
 class TestRiskLevelNormalization:

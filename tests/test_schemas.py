@@ -49,51 +49,58 @@ def test_lecture_update_allows_partial_payload() -> None:
 def test_upload_request_metadata_parses_date_and_defaults() -> None:
     payload = UploadRequestMetadata(
         course_name="AI Ethics",
-        lecture_date="2024-04-01",
+        lecture_on="2024-01-01",
         lecture_number=3,
     )
 
-    assert payload.lecture_date == date(2024, 4, 1)
+    assert payload.lecture_on == date(2024, 1, 1)
     assert payload.lecture_id is None
     assert payload.uploader_id is None
 
 
 def test_comment_analysis_schema_computed_fields_and_exclusion() -> None:
+    # Pydanticのfrom_attributes=Trueは属性アクセスを行うため、
+    # ネストされたオブジェクトも属性としてアクセス可能である必要がある。
+    # SimpleNamespaceは属性アクセス可能。
     survey = SimpleNamespace(
         score_satisfaction_overall=4,
-        score_satisfaction_content_understanding=5,
-        score_satisfaction_instructor_overall=3,
+        score_content_understanding=4,
+        score_instructor_overall=4,
     )
     comment = SimpleNamespace(
-        account_id="user-1",
-        account_name="Alice",
-        question_text="How was the lecture?",
-        comment_text="Great session!",
-        survey_response=survey,
+        question_type="free_comment",
+        comment_text="test comment",
+        llm_category="content",
+        llm_sentiment_type="positive",
+        llm_importance_level="high",
+        llm_is_abusive=False,
+        is_analyzed=True,
+        response=survey,
     )
 
     schema = CommentAnalysisSchema.model_validate(comment)
     dumped = schema.model_dump()
 
     assert schema.score_satisfaction_overall == 4
-    assert schema.score_satisfaction_content_understanding == 5
-    assert schema.score_satisfaction_instructor_overall == 3
-    assert "survey_response" not in dumped
+    assert schema.score_satisfaction_content_understanding == 4
+    assert schema.score_satisfaction_instructor_overall == 4
+    assert "response" not in dumped
 
 
 def test_duplicate_check_response_defaults() -> None:
     response = DuplicateCheckResponse(exists=False)
-    assert response.file_id is None
+    assert response.survey_batch_id is None
 
 
 def test_lecture_metrics_response_extends_payload() -> None:
     response = LectureMetricsResponse(
-        file_id=99,
-        zoom_participants=120,
-        recording_views=45,
+        survey_batch_id=99,
+        zoom_participants=100,
+        recording_views=50,
         updated_at=datetime(2024, 5, 1, 12, 30),
     )
 
-    assert response.file_id == 99
-    assert response.zoom_participants == 120
+    assert response.survey_batch_id == 99
+    assert response.zoom_participants == 100
+    assert response.recording_views == 50
     assert response.updated_at == datetime(2024, 5, 1, 12, 30)

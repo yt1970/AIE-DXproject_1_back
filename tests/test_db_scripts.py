@@ -65,14 +65,13 @@ def test_init_db_creates_expected_tables(session_reloader):
     tables = set(inspector.get_table_names())
 
     expected_tables = {
-        "uploaded_file",
-        "survey_batch",
-        "survey_response",
-        "response_comment",
-        "lecture",
-        "lecture_metrics",
-        "survey_summary",
-        "comment_summary",
+        "survey_batches",
+        "survey_responses",
+        "response_comments",
+        "lectures",
+        "survey_summaries",
+        "comment_summaries",
+        "score_distributions",
     }
 
     assert expected_tables <= tables

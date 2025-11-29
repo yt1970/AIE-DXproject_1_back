@@ -5,7 +5,11 @@ from app.db.migrations import apply_migrations
 
 def _target_comment_table(inspector):
     table_names = inspector.get_table_names()
-    return "response_comment" if "response_comment" in table_names else "comment"
+    if "response_comments" in table_names:
+        return "response_comments"
+    if "response_comment" in table_names:
+        return "response_comment"
+    return "comment"
 
 
 def test_apply_migrations_adds_missing_columns() -> None:
@@ -50,27 +54,3 @@ def test_apply_migrations_is_idempotent() -> None:
     assert columns.count("llm_importance_level") == 1
     assert columns.count("llm_importance_score") == 1
     assert columns.count("llm_risk_level") == 1
-
-
-def test_apply_migrations_adds_uploaded_file_columns() -> None:
-    engine = create_engine("sqlite:///:memory:")
-    metadata = MetaData()
-    Table(
-        "uploaded_file",
-        metadata,
-        Column("file_id", Integer, primary_key=True),
-    )
-    metadata.create_all(engine)
-
-    apply_migrations(engine)
-
-    inspector = inspect(engine)
-    columns = {column["name"] for column in inspector.get_columns("uploaded_file")}
-
-    expected = {
-        "original_filename",
-        "content_type",
-        "total_rows",
-        "processed_rows",
-    }
-    assert expected <= columns

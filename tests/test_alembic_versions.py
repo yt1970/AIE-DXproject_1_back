@@ -13,14 +13,15 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ALEMBIC_INI = PROJECT_ROOT / "alembic.ini"
 
 EXPECTED_TABLES = {
-    "lecture",
-    "uploaded_file",
-    "survey_batch",
-    "survey_response",
-    "response_comment",
+    "lectures",
+    "uploaded_files",
+    "survey_batches",
+    "survey_responses",
+    "response_comments",
     "lecture_metrics",
-    "survey_summary",
-    "comment_summary",
+    "survey_summaries",
+    "comment_summaries",
+    "score_distributions",
 }
 
 

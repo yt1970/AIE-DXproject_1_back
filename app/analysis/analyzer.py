@@ -18,17 +18,17 @@ class CommentAnalysisResult:
     def __init__(
         self,
         is_improvement_needed: bool,
-        is_slanderous: bool,
+        is_abusive: bool,
         sentiment_normalized: SentimentType,
         *,
         llm_result: llm_analyzer.LLMAnalysisResult,
         risk_level_normalized: RiskLevelType,
         category_normalized: CategoryType,
-        importance_normalized: ImportanceType,
+        importance_normalized: ImportanceType | None,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
-        self.is_slanderous = is_slanderous
+        self.is_abusive = is_abusive
         self.sentiment_normalized = sentiment_normalized
         # LLM分析結果の詳細情報
         self.category_normalized = category_normalized
@@ -51,7 +51,7 @@ class CommentAnalysisResult:
 
     @property
     def importance(self) -> str:
-        return self.importance_normalized.value
+        return self.importance_normalized.value if self.importance_normalized else ""
 
     @property
     def risk_level(self) -> str:
@@ -61,10 +61,10 @@ class CommentAnalysisResult:
         return (
             "CommentAnalysisResult("
             f"is_improvement_needed={self.is_improvement_needed}, "
-            f"is_slanderous={self.is_slanderous}, "
+            f"is_abusive={self.is_abusive}, "
             f"sentiment={self.sentiment_normalized.value}, "
             f"category={self.category_normalized.value}, "
-            f"importance={self.importance_normalized.value}, "
+            f"importance={self.importance_normalized.value if self.importance_normalized else None}, "
             f"risk_level={self.risk_level_normalized.value}"
             ")"
         )
@@ -122,8 +122,8 @@ def analyze_comment(
     final_importance_score = scoring.determine_importance_score(llm_structured)
     is_improvement_needed = final_importance_score > 0.4
 
-    # is_slanderous: 安全性チェックモジュールで誹謗中傷を判定
-    is_slanderous = not safety.is_comment_safe(comment_text, llm_structured)
+    # is_abusive: 安全性チェックモジュールで誹謗中傷を判定
+    is_abusive = not safety.is_comment_safe(comment_text, llm_structured)
     
     # LLMの処理が走らなかった場合の処理を行っている。キーワード一致での予測を行っている。
     category_guess, sentiment_guess = aggregation.classify_comment(
@@ -139,7 +139,9 @@ def analyze_comment(
     llm_structured.importance_score = final_importance_score
     llm_structured.risk_level = risk_level_enum.value
     llm_structured.category = category_enum.value
-    llm_structured.importance_level = importance_enum.value
+    llm_structured.importance_level = (
+        importance_enum.value if importance_enum is not None else None
+    )
     llm_structured.sentiment = sentiment_enum.value
     llm_structured.sentiment_normalized = sentiment_enum
     llm_structured.category_normalized = category_enum
@@ -149,7 +151,7 @@ def analyze_comment(
 
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
-        is_slanderous=is_slanderous,
+        is_abusive=is_abusive,
         sentiment_normalized=sentiment_enum,
         category_normalized=category_enum,
         importance_normalized=importance_enum,
@@ -216,7 +218,11 @@ def _normalize_sentiment(raw_value: str | None) -> SentimentType:
 CATEGORY_ALIASES = {
     "講師": CategoryType.instructor,
     "運営": CategoryType.operation,
+    "operations": CategoryType.operation,
+    "operation": CategoryType.operation,
     "講義資料": CategoryType.material,
+    "materials": CategoryType.material,
+    "material": CategoryType.material,
     "講義内容": CategoryType.content,
 }
 
@@ -253,21 +259,23 @@ IMPORTANCE_ALIASES = {
     "high": ImportanceType.high,
     "medium": ImportanceType.medium,
     "low": ImportanceType.low,
-    "other": ImportanceType.other,
+    "高": ImportanceType.high,
+    "中": ImportanceType.medium,
+    "低": ImportanceType.low,
 }
 
 IMPORTANCE_DISPLAY = {
     ImportanceType.high: "high",
     ImportanceType.medium: "medium",
     ImportanceType.low: "low",
-    ImportanceType.other: "other",
 }
 
 
-def _normalize_importance(raw_value: str | None) -> ImportanceType:
+def _normalize_importance(raw_value: str | None) -> ImportanceType | None:
     """Map arbitrary importance labels to the Enum we persist."""
     if not raw_value:
-        return ImportanceType.other
+        # 「その他」は Enum では表現せず、DB 上は NULL として扱う
+        return None
 
     normalized = raw_value.strip().lower()
     if normalized in ImportanceType.__members__:
@@ -280,12 +288,15 @@ def _normalize_importance(raw_value: str | None) -> ImportanceType:
         if key.lower() == normalized:
             return mapped
 
-    return ImportanceType.other
+    # 未知の値も NULL 扱い（DB では NULL、集計では low と同等に扱う）
+    return None
 
 
 RISK_LEVEL_ALIASES = {
     "flag": RiskLevelType.flag,
+    "危険": RiskLevelType.flag,
     "safe": RiskLevelType.safe,
+    "安全": RiskLevelType.safe,
     "other": RiskLevelType.other,
 }
 

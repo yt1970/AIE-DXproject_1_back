@@ -33,7 +33,7 @@ def _choose_effective_batches(
 
     優先順位:
     1. finalized_at の新しいもの
-    2. upload_timestamp の新しいもの
+    2. uploaded_at の新しいもの
     """
     by_number: Dict[int, List[models.SurveyBatch]] = defaultdict(list)
     for row in rows:
@@ -45,28 +45,26 @@ def _choose_effective_batches(
         if finalized:
             chosen[lecture_number] = max(finalized, key=lambda b: b.finalized_at)
         else:
-            chosen[lecture_number] = max(batches, key=lambda b: b.upload_timestamp)
+            chosen[lecture_number] = max(batches, key=lambda b: b.uploaded_at)
     return chosen
 
 
 def _pick_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[Tuple[int, str], models.SurveySummary],
+    summaries: Dict[int, models.SurveySummary],
 ) -> Optional[models.SurveySummary]:
-    return summaries.get((batch_id, version)) or summaries.get(
-        (batch_id, "preliminary")
-    )
+    # version は旧設計互換のため残しているが、現在はバッチ単位で単一サマリのみを保持する。
+    return summaries.get(batch_id)
 
 
 def _pick_comment_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[Tuple[int, str], models.CommentSummary],
-) -> Optional[models.CommentSummary]:
-    return summaries.get((batch_id, version)) or summaries.get(
-        (batch_id, "preliminary")
-    )
+    summaries: Dict[int, List[models.CommentSummary]],
+) -> List[models.CommentSummary]:
+    # version は旧設計互換のため残しているが、現在はバッチ単位で単一集合のみを保持する。
+    return summaries.get(batch_id) or []
 
 
 def _aggregate_scores(
@@ -75,7 +73,7 @@ def _aggregate_scores(
     totals: Dict[str, float] = {k: 0.0 for k in _SCORE_FIELD_MAP.keys()}
     weights: Dict[str, int] = {k: 0 for k in _SCORE_FIELD_MAP.keys()}
     for s in summaries:
-        weight = s.responses_count or 0
+        weight = s.response_count or 0
         if weight <= 0:
             continue
         for out_key, attr in _SCORE_FIELD_MAP.items():
@@ -109,48 +107,77 @@ def _aggregate_nps(
     }
 
 
+def _comment_stats(
+    rows: List[models.CommentSummary],
+) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
+    sentiments = {"positive": 0, "negative": 0, "neutral": 0}
+    categories = {
+        "lecture_content": 0,
+        "lecture_material": 0,
+        "operations": 0,
+        "other": 0,
+    }
+    importance = {"low": 0, "medium": 0, "high": 0}
+
+    for row in rows:
+        if row.analysis_type == "sentiment" and row.label in sentiments:
+            sentiments[row.label] += int(row.count or 0)
+        elif row.analysis_type == "category":
+            key_map = {
+                "content": "lecture_content",
+                "materials": "lecture_material",
+                "operations": "operations",
+                "other": "other",
+            }
+            mapped = key_map.get(row.label)
+            if mapped and mapped in categories:
+                categories[mapped] += int(row.count or 0)
+        elif row.analysis_type == "importance" and row.label in importance:
+            importance[row.label] += int(row.count or 0)
+
+    comments_count = max(
+        sum(sentiments.values()),
+        sum(categories.values()),
+        sum(importance.values()),
+    )
+    important_count = importance["medium"] + importance["high"]
+    return sentiments, categories, importance, comments_count, important_count
+
+
 def _aggregate_sentiments(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    return {
-        "positive": sum(int(s.sentiment_positive or 0) for s in summaries),
-        "negative": sum(int(s.sentiment_negative or 0) for s in summaries),
-        "neutral": sum(int(s.sentiment_neutral or 0) for s in summaries),
-    }
+    sentiments, _, _, _, _ = _comment_stats(summaries)
+    return sentiments
 
 
 def _aggregate_categories(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    return {
-        "lecture_content": sum(int(s.category_lecture_content or 0) for s in summaries),
-        "lecture_material": sum(
-            int(s.category_lecture_material or 0) for s in summaries
-        ),
-        "operations": sum(int(s.category_operations or 0) for s in summaries),
-        "other": sum(int(s.category_other or 0) for s in summaries),
-    }
+    _, categories, _, _, _ = _comment_stats(summaries)
+    return categories
 
 
 def _aggregate_counts(
     survey_summaries: List[models.SurveySummary],
     comment_summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
+    _, _, importance, comments_count, important_from_comments = _comment_stats(
+        comment_summaries
+    )
     return {
-        "responses": sum(int(s.responses_count or 0) for s in survey_summaries),
-        "comments": sum(int(s.comments_count or 0) for s in survey_summaries),
-        "important_comments": sum(
-            int(c.important_comments_count or 0) for c in comment_summaries
-        ),
+        "responses": sum(int(s.response_count or 0) for s in survey_summaries),
+        "comments": comments_count,
+        "important_comments": important_from_comments,
     }
 
 
 def _load_summaries(
     db: Session,
     batch_ids: List[int],
-) -> Tuple[
-    Dict[Tuple[int, str], models.SurveySummary],
-    Dict[Tuple[int, str], models.CommentSummary],
+    ) -> Tuple[
+    Dict[int, models.SurveySummary],
+    Dict[int, List[models.CommentSummary]],
 ]:
     survey_rows = (
         db.query(models.SurveySummary)
@@ -162,12 +189,13 @@ def _load_summaries(
         .filter(models.CommentSummary.survey_batch_id.in_(batch_ids))
         .all()
     )
-    survey_map = {
-        (row.survey_batch_id, row.analysis_version): row for row in survey_rows
+    # analysis_version カラム廃止に伴い、バッチID単位で集約する。
+    survey_map: Dict[int, models.SurveySummary] = {
+        row.survey_batch_id: row for row in survey_rows
     }
-    comment_map = {
-        (row.survey_batch_id, row.analysis_version): row for row in comment_rows
-    }
+    comment_map: Dict[int, List[models.CommentSummary]] = {}
+    for row in comment_rows:
+        comment_map.setdefault(row.survey_batch_id, []).append(row)
     return survey_map, comment_map
 
 
@@ -233,12 +261,13 @@ def dashboard_overview(
     ]
     survey_summaries = [s for s in survey_summaries if s]
     comment_summaries = [c for c in comment_summaries if c]
+    flat_comment_rows = [row for rows in comment_summaries for row in rows]
 
     scores = _aggregate_scores(survey_summaries)
     nps = _aggregate_nps(survey_summaries)
-    counts = _aggregate_counts(survey_summaries, comment_summaries)
-    sentiments = _aggregate_sentiments(comment_summaries)
-    categories = _aggregate_categories(comment_summaries)
+    counts = _aggregate_counts(survey_summaries, flat_comment_rows)
+    sentiments = _aggregate_sentiments(flat_comment_rows)
+    categories = _aggregate_categories(flat_comment_rows)
 
     timeline = []
     for lecture_num, batch in sorted(chosen.items(), key=lambda x: x[0]):
@@ -248,7 +277,7 @@ def dashboard_overview(
                 "lecture_number": lecture_num,
                 "batch_id": batch.id,
                 "nps": summary.nps_score if summary else 0.0,
-                "response_count": summary.responses_count if summary else 0,
+                "response_count": summary.response_count if summary else 0,
                 "avg_overall_satisfaction": (
                     summary.score_overall_satisfaction if summary else None
                 ),
@@ -303,32 +332,18 @@ def dashboard_per_lecture(
                     "detractors": summary.nps_detractors if summary else 0,
                     "total": summary.nps_total if summary else 0,
                 },
-                "sentiments": _aggregate_sentiments(
-                    [comment_summary] if comment_summary else []
-                ),
-                "categories": _aggregate_categories(
-                    [comment_summary] if comment_summary else []
-                ),
+                "sentiments": _aggregate_sentiments(comment_summary),
+                "categories": _aggregate_categories(comment_summary),
                 "importance": {
-                    "low": comment_summary.importance_low if comment_summary else 0,
-                    "medium": (
-                        comment_summary.importance_medium if comment_summary else 0
-                    ),
-                    "high": comment_summary.importance_high if comment_summary else 0,
-                    "important_comments": (
-                        comment_summary.important_comments_count
-                        if comment_summary
-                        else 0
-                    ),
+                    "low": _comment_stats(comment_summary)[2]["low"],
+                    "medium": _comment_stats(comment_summary)[2]["medium"],
+                    "high": _comment_stats(comment_summary)[2]["high"],
+                    "important_comments": _comment_stats(comment_summary)[4],
                 },
                 "counts": {
-                    "responses": summary.responses_count if summary else 0,
-                    "comments": summary.comments_count if summary else 0,
-                    "important_comments": (
-                        comment_summary.important_comments_count
-                        if comment_summary
-                        else 0
-                    ),
+                    "responses": summary.response_count if summary else 0,
+                    "comments": _comment_stats(comment_summary)[3],
+                    "important_comments": _comment_stats(comment_summary)[4],
                 },
             }
         )
