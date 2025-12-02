@@ -92,10 +92,8 @@ HTTPステータスコードに加え、以下のJSONボディを返却する。
 | **HTTPステータス** | **エラーコード** | **説明** |
 | --- | --- | --- |
 | **400** | `INVALID_REQUEST` | リクエストパラメータが不正 |
-| **401** | `UNAUTHORIZED` | **セッション無効**
-ALBの設定により、通常はアプリに到達する前にCognitoへリダイレクトされるため、このエラーが発生するのは稀（AJAX通信中のセッション切れ等） |
-| **403** | `FORBIDDEN` | **アクセス権限なし**
-ログインはしているが、リソースへのアクセス権がない場合 |
+| **401** | `UNAUTHORIZED` | **セッション無効** - ALBの設定により、通常はアプリに到達する前にCognitoへリダイレクトされるため、このエラーが発生するのは稀（AJAX通信中のセッション切れ等） |
+| **403** | `FORBIDDEN` | **アクセス権限なし** - ログインはしているが、リソースへのアクセス権がない場合 |
 | **404** | `NOT_FOUND` | リソース未検出 |
 | **409** | `CONFLICT` | データ重複・競合 |
 | **500** | `INTERNAL_ERROR` | サーバー内部エラー |
@@ -390,7 +388,7 @@ interface ResponseTrendItem {
     student: number;            // 学生の回答数
     corporate: number;          // 会員企業の回答数
     invited: number;            // 招待枠の回答数
-    faculty: number;            // 教職員の回答数
+    faculty: number;            // 教員の回答数
     other: number;              // その他/不明の回答数
   };
 }
@@ -472,7 +470,7 @@ interface SentimentSummaryItem {
 
 // カテゴリ別コメント数
 interface CategorySummaryItem {
-  category: CommentCategory;    // content / materials / operations / other
+  category: CommentCategory;    // content / materials / operations / instructor / other
   count: number;                // コメント数
 }
 ```
@@ -690,7 +688,6 @@ interface CommentItem {
   category: CommentCategory | null;  // カテゴリ（null=未分類）
   importance: Importance | null;     // 重要度（null=未判定）
   question_type: QuestionType;  // 質問タイプ
-  created_at: string;           // 回答日時
 }
 ```
 
@@ -751,8 +748,7 @@ interface CommentItem {
       "sentiment": "positive",
       "category": "content",
       "importance": "high",
-      "question_type": "good_points",
-      "created_at": "2024-10-08T10:30:00Z"
+      "question_type": "good_points"
     }
   ],
   "comments": [
@@ -762,8 +758,7 @@ interface CommentItem {
       "sentiment": "positive",
       "category": "content",
       "importance": "high",
-      "question_type": "good_points",
-      "created_at": "2024-10-08T10:30:00Z"
+      "question_type": "good_points"
     },
     {
       "id": "comment-002",
@@ -771,8 +766,7 @@ interface CommentItem {
       "sentiment": "negative",
       "category": "materials",
       "importance": "high",
-      "question_type": "improvements",
-      "created_at": "2024-10-08T11:00:00Z"
+      "question_type": "improvements"
     }
   ]
 }
@@ -929,6 +923,7 @@ Excelファイルをアップロードし、アンケートデータを登録す
 | `session` | string | ○ | 講義回（例: "第1回", "特別回"） |
 | `lecture_date` | string | ○ | 講義日（YYYY-MM-DD） |
 | `instructor_name` | string | ○ | 講師名 |
+| `description` | string | - | 講義内容 |
 | `batch_type` | string | ○ | `preliminary` または `confirmed` |
 | `zoom_participants` | number | ※ | Zoom参加者数（速報版時は必須） |
 | `recording_views` | number | ※ | 録画視聴回数（確定版時は必須） |
@@ -1080,7 +1075,7 @@ interface AttributeItem {
     { "key": "student", "label": "学生" },
     { "key": "corporate", "label": "会員企業" },
     { "key": "invited", "label": "招待枠" },
-    { "key": "faculty", "label": "教職員" },
+    { "key": "faculty", "label": "教員" },
     { "key": "other", "label": "その他/不明" }
   ]
 }
@@ -1096,10 +1091,10 @@ ALBが付与したヘッダー情報を基に、現在のユーザー情報を�
 
 ```tsx
 interface UserInfoResponse {
-  sub: string;           // ユーザーID (x-amzn-oidc-identity)
-  username: string;      // ユーザー名
-  email: string;         // メールアドレス
-  role: string;          // 権限ロール（Cognitoグループ等から判定）
+  sub: string | null;           // ユーザーID (x-amzn-oidc-identity)
+  username: string | null;      // ユーザー名
+  email: string | null;         // メールアドレス
+  role: string | null;          // 権限ロール（Cognitoグループ等から判定）
 }
 ```
 
@@ -1203,6 +1198,14 @@ interface UserInfoResponse {
 ### Importance
 
 - `high`, `medium`, `low`
+
+### CommentCategory
+
+- `content`: 講義内容
+- `materials`: 講義資料
+- `operations`: 運営
+- `instructor`: 講師
+- `other`: その他
 
 # 6. APIエンドポイント一覧
 
