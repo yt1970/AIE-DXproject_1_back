@@ -3,51 +3,52 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.comment import AnalysisStatusResponse
+from app.schemas.comment import JobStatusResponse, JobResult, JobError
 
 router = APIRouter()
 
-
-@router.get("/uploads/{survey_batch_id}/status", response_model=AnalysisStatusResponse)
-def get_analysis_status(
-    survey_batch_id: int,
+@router.get("/jobs/{job_id}", response_model=JobStatusResponse)
+def get_job_status(
+    job_id: str,
     db: Session = Depends(get_db),
 ):
-    """指定されたバッチIDの分析ステータスを返す。"""
-    survey_batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == survey_batch_id).first()
+    """
+    アップロード処理などの非同期ジョブの進行状況と結果を取得する。
+    job_id は現在は survey_batch_id と同じ。
+    """
+    try:
+        batch_id = int(job_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    survey_batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
 
     if not survey_batch:
         raise HTTPException(
-            status_code=404, detail=f"Batch ID {survey_batch_id} not found"
+            status_code=404, detail=f"Job {job_id} not found"
         )
 
     # Check if summary exists to determine completion
     summary = db.query(models.SurveySummary).filter(
-        models.SurveySummary.survey_batch_id == survey_batch_id,
-        models.SurveySummary.student_attribute == 'ALL' # Assuming 'ALL' summary is always created
+        models.SurveySummary.survey_batch_id == batch_id,
+        models.SurveySummary.student_attribute == 'all' # Assuming 'all' summary is always created
     ).first()
 
-    status = "COMPLETED" if summary else "PROCESSING"
+    status = "completed" if summary else "processing"
+    # Note: "queued" or "failed" logic would require more state tracking in DB.
+    # For now, we assume processing if batch exists but summary doesn't.
     
-    # Count processed comments
-    processed_count = (
-        db.query(models.ResponseComment)
-        .filter(models.ResponseComment.survey_batch_id == survey_batch_id)
-        .count()
-    )
-    
-    # Total comments is unknown during processing without extra storage, 
-    # so we assume it matches processed_count if completed, or just return processed_count.
-    total_comments = processed_count
+    result = None
+    if status == "completed" and summary:
+        result = JobResult(
+            lecture_id=survey_batch.lecture_id,
+            batch_id=survey_batch.id,
+            response_count=summary.response_count
+        )
 
-    return AnalysisStatusResponse(
-        survey_batch_id=survey_batch_id,
+    return JobStatusResponse(
+        job_id=str(survey_batch.id),
         status=status,
-        total_comments=total_comments,
-        processed_count=processed_count,
-        task_id=None, # Not tracked in DB
-        queued_at=survey_batch.uploaded_at,
-        processing_started_at=None, # Not tracked in DB
-        processing_completed_at=None, # Not tracked in DB
-        error_message=None, # Not tracked in DB
+        created_at=survey_batch.uploaded_at,
+        result=result
     )

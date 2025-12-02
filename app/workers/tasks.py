@@ -55,6 +55,7 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
                 db=session,
                 survey_batch=survey_batch,
                 content_bytes=content_bytes,
+                filename=s3_key,
             )
         )
 

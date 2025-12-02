@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db import models
 from app.db.session import get_db
@@ -12,40 +12,42 @@ from app.db.session import get_db
 router = APIRouter()
 
 _SCORE_FIELD_MAP = {
-    "overall_satisfaction": "score_overall_satisfaction",
-    "content_volume": "score_content_volume",
-    "content_understanding": "score_content_understanding",
-    "content_announcement": "score_content_announcement",
-    "instructor_overall": "score_instructor_overall",
-    "instructor_time": "score_instructor_time",
-    "instructor_qa": "score_instructor_qa",
-    "instructor_speaking": "score_instructor_speaking",
-    "self_preparation": "score_self_preparation",
-    "self_motivation": "score_self_motivation",
-    "self_future": "score_self_future",
+    "overall_satisfaction": "avg_satisfaction_overall",
+    "content_volume": "avg_content_volume",
+    "content_understanding": "avg_content_understanding",
+    "content_announcement": "avg_content_announcement",
+    "instructor_overall": "avg_instructor_overall",
+    "instructor_time": "avg_instructor_time",
+    "instructor_qa": "avg_instructor_qa",
+    "instructor_speaking": "avg_instructor_speaking",
+    "self_preparation": "avg_self_preparation",
+    "self_motivation": "avg_self_motivation",
+    "self_future": "avg_self_future",
 }
 
 
 def _choose_effective_batches(
     rows: Iterable[models.SurveyBatch],
 ) -> Dict[int, models.SurveyBatch]:
-    """講義番号ごとの代表バッチを選択する。
+    """講義IDごとの代表バッチを選択する。
 
     優先順位:
-    1. finalized_at の新しいもの
-    2. uploaded_at の新しいもの
+    1. uploaded_at の新しいもの (finalized_at はモデルにないため)
     """
-    by_number: Dict[int, List[models.SurveyBatch]] = defaultdict(list)
+    by_lecture_id: Dict[int, List[models.SurveyBatch]] = defaultdict(list)
     for row in rows:
-        by_number[row.lecture_number].append(row)
+        by_lecture_id[row.lecture_id].append(row)
 
     chosen: Dict[int, models.SurveyBatch] = {}
-    for lecture_number, batches in by_number.items():
-        finalized = [b for b in batches if b.finalized_at is not None]
-        if finalized:
-            chosen[lecture_number] = max(finalized, key=lambda b: b.finalized_at)
+    for lecture_id, batches in by_lecture_id.items():
+        # batch_type='confirmed' を優先すべきだが、
+        # ここでは単純に uploaded_at が最新のものを採用する（または呼び出し元でフィルタリング済みと仮定）
+        # confirmed があればそれを優先するロジックを追加
+        confirmed = [b for b in batches if b.batch_type == 'confirmed']
+        if confirmed:
+            chosen[lecture_id] = max(confirmed, key=lambda b: b.uploaded_at)
         else:
-            chosen[lecture_number] = max(batches, key=lambda b: b.uploaded_at)
+            chosen[lecture_id] = max(batches, key=lambda b: b.uploaded_at)
     return chosen
 
 
@@ -93,10 +95,10 @@ def _aggregate_scores(
 def _aggregate_nps(
     summaries: List[models.SurveySummary],
 ) -> Dict[str, float | int]:
-    promoters = sum(int(s.nps_promoters or 0) for s in summaries)
-    passives = sum(int(s.nps_passives or 0) for s in summaries)
-    detractors = sum(int(s.nps_detractors or 0) for s in summaries)
-    total = sum(int(s.nps_total or 0) for s in summaries)
+    promoters = sum(int(s.promoter_count or 0) for s in summaries)
+    passives = sum(int(s.passive_count or 0) for s in summaries)
+    detractors = sum(int(s.detractor_count or 0) for s in summaries)
+    total = sum(int(s.response_count or 0) for s in summaries)
     score = round((promoters - detractors) * 100.0 / total, 1) if total else 0.0
     return {
         "score": score,
@@ -204,9 +206,11 @@ def _format_scores(
 ) -> Dict[str, Optional[float]]:
     if not summary:
         return {k: None for k in _SCORE_FIELD_MAP.keys()}
-    return {
-        out_key: getattr(summary, attr) for out_key, attr in _SCORE_FIELD_MAP.items()
-    }
+    result = {}
+    for out_key, attr in _SCORE_FIELD_MAP.items():
+        val = getattr(summary, attr)
+        result[out_key] = float(val) if val is not None else None
+    return result
 
 
 @router.get("/dashboard/{lecture_id}/overview")
@@ -220,9 +224,22 @@ def dashboard_overview(
     if not lecture:
         raise HTTPException(status_code=404, detail="講義が見つかりません")
 
+    # 同一コースの全講義を取得
+    lectures = (
+        db.query(models.Lecture)
+        .filter(
+            models.Lecture.name == lecture.name,
+            models.Lecture.academic_year == lecture.academic_year,
+            models.Lecture.term == lecture.term,
+        )
+        .all()
+    )
+    lecture_ids = [l.id for l in lectures]
+
     batches = (
         db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.lecture_id == lecture_id)
+        .options(joinedload(models.SurveyBatch.lecture))
+        .filter(models.SurveyBatch.lecture_id.in_(lecture_ids))
         .all()
     )
     if not batches:
@@ -270,16 +287,20 @@ def dashboard_overview(
     categories = _aggregate_categories(flat_comment_rows)
 
     timeline = []
-    for lecture_num, batch in sorted(chosen.items(), key=lambda x: x[0]):
+    timeline = []
+    # lecture_on 順にソートするためにバッチから講義情報を参照
+    sorted_batches = sorted(chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+
+    for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
         timeline.append(
             {
-                "lecture_number": lecture_num,
+                "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
-                "nps": summary.nps_score if summary else 0.0,
+                "nps": float(summary.nps) if summary and summary.nps is not None else 0.0,
                 "response_count": summary.response_count if summary else 0,
                 "avg_overall_satisfaction": (
-                    summary.score_overall_satisfaction if summary else None
+                    float(summary.avg_satisfaction_overall) if summary and summary.avg_satisfaction_overall is not None else None
                 ),
             }
         )
@@ -301,9 +322,26 @@ def dashboard_per_lecture(
     db: Session = Depends(get_db),
 ) -> dict:
     """講義番号ごとの詳細（スコア・NPS・感情/カテゴリ内訳）を返す。"""
+    lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
+    if not lecture:
+        raise HTTPException(status_code=404, detail="講義が見つかりません")
+
+    # 同一コースの全講義を取得
+    lectures = (
+        db.query(models.Lecture)
+        .filter(
+            models.Lecture.name == lecture.name,
+            models.Lecture.academic_year == lecture.academic_year,
+            models.Lecture.term == lecture.term,
+        )
+        .all()
+    )
+    lecture_ids = [l.id for l in lectures]
+
     batches = (
         db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.lecture_id == lecture_id)
+        .options(joinedload(models.SurveyBatch.lecture))
+        .filter(models.SurveyBatch.lecture_id.in_(lecture_ids))
         .all()
     )
     if not batches:
@@ -315,22 +353,25 @@ def dashboard_per_lecture(
     survey_map, comment_map = _load_summaries(db, batch_ids)
 
     lectures_payload: List[dict] = []
-    for lecture_num, batch in chosen_sorted:
+    # lecture_on 順にソート
+    sorted_batches = sorted(list(chosen.values()), key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+
+    for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
         comment_summary = _pick_comment_summary(
             batch.id, version or "final", comment_map
         )
         lectures_payload.append(
             {
-                "lecture_number": lecture_num,
+                "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
                 "scores": _format_scores(summary),
                 "nps": {
-                    "score": summary.nps_score if summary else 0.0,
-                    "promoters": summary.nps_promoters if summary else 0,
-                    "passives": summary.nps_passives if summary else 0,
-                    "detractors": summary.nps_detractors if summary else 0,
-                    "total": summary.nps_total if summary else 0,
+                    "score": float(summary.nps) if summary and summary.nps is not None else 0.0,
+                    "promoters": summary.promoter_count if summary else 0,
+                    "passives": summary.passive_count if summary else 0,
+                    "detractors": summary.detractor_count if summary else 0,
+                    "total": summary.response_count if summary else 0,
                 },
                 "sentiments": _aggregate_sentiments(comment_summary),
                 "categories": _aggregate_categories(comment_summary),
