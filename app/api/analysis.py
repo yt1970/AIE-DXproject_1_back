@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.comment import JobStatusResponse, JobResult, JobError
+from app.schemas.comment import JobError, JobResult, JobStatusResponse
 
 router = APIRouter()
 

@@ -1,4 +1,3 @@
-
 import base64
 import json
 import os
@@ -7,6 +6,7 @@ from typing import Optional
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.types import ASGIApp
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app: ASGIApp, debug: bool = False):

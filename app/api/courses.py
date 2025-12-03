@@ -1,5 +1,5 @@
-from typing import List, Optional, Dict
 from collections import defaultdict
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func
@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.db.session import get_db
 from app.schemas.course import (
-    CourseListResponse,
-    CourseItem,
-    SessionSummary,
-    CourseDetailResponse,
-    LectureInfo,
-    BatchInfo,
     AnalysisType,
+    BatchInfo,
+    CourseDetailResponse,
+    CourseItem,
+    CourseListResponse,
+    LectureInfo,
+    SessionSummary,
 )
 
 router = APIRouter()

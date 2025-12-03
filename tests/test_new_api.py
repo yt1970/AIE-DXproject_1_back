@@ -179,7 +179,7 @@ def test_upload_survey_multipart(client: TestClient):
     }
     
     response = client.post("/api/v1/surveys/upload", data=data, files=files)
-    assert response.status_code == 200
+    assert response.status_code == 202
     resp_data = response.json()
     assert "job_id" in resp_data
     assert "status_url" in resp_data

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from typing import List, Optional
 from collections import defaultdict
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func
@@ -9,10 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.course import (
-    LectureDetailResponse,
-    ScoreDistributionSchema,
-)
+from app.schemas.course import LectureDetailResponse, ScoreDistributionSchema
 
 router = APIRouter()
 
@@ -62,20 +59,20 @@ def get_lecture_detail(lecture_id: int, db: Session = Depends(get_db)) -> Lectur
         score_distributions=[ScoreDistributionSchema.model_validate(d) for d in distributions],
     )
 
-
 from app.schemas.analysis import (
+    AverageScoreItem,
+    CommentCategory,
+    CommentItem,
+    Importance,
+    QuestionType,
+    RatingDistribution,
+    ScoreDistributions,
+    Sentiment,
     SessionAnalysisResponse,
     SessionLectureInfo,
     SessionNPS,
-    AverageScoreItem,
-    ScoreDistributions,
-    RatingDistribution,
-    CommentItem,
-    QuestionType,
-    Sentiment,
-    CommentCategory,
-    Importance,
 )
+
 
 @router.get("/lectures/{lecture_id}/analysis", response_model=SessionAnalysisResponse)
 def get_lecture_analysis(

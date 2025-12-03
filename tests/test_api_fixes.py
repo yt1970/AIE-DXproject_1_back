@@ -1,15 +1,16 @@
+import os
+from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
-from app.main import app
+from sqlalchemy.orm import Session, sessionmaker
+
+from app.core import settings as settings_module
 from app.db import models
 from app.db import session as session_module
-from app.core import settings as settings_module
-from datetime import date, datetime
-from pathlib import Path
-import os
+from app.main import app
 
 @pytest.fixture(name="db_session")
 def fixture_db_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

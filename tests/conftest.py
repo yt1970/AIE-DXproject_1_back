@@ -1,10 +1,10 @@
+import warnings
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import warnings
 
 from app import main as app_main
 from app.core import settings as settings_module

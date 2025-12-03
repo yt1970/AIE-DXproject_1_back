@@ -1,3 +1,4 @@
+from collections import defaultdict
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,24 +8,23 @@ from sqlalchemy.orm import Session
 from app.db import models
 from app.db.session import get_db
 from app.schemas.analysis import (
-    OverallTrendsResponse,
-    YearComparisonResponse,
+    CategorySummaryItem,
+    CommentCategory,
     LectureInfoItem,
-    ResponseTrendItem,
-    ParticipationTrendItem,
     NPSSummary,
     NPSTrendItem,
-    ScoreTrendItem,
     OverallAverages,
-    SentimentSummaryItem,
-    CategorySummaryItem,
-    ScoreItem,
-    YearMetrics,
+    OverallTrendsResponse,
+    ParticipationTrendItem,
+    ResponseTrendItem,
     ScoreComparisonItem,
+    ScoreItem,
+    ScoreTrendItem,
     Sentiment,
-    CommentCategory,
+    SentimentSummaryItem,
+    YearComparisonResponse,
+    YearMetrics,
 )
-from collections import defaultdict
 
 router = APIRouter()
 

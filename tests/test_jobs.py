@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from datetime import date, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from datetime import date, datetime
 
 from app import main as app_main
 from app.core import settings as settings_module
