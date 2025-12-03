@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.db import models
 from app.db import session as session_module
 
+
 def _create_dashboard_data(db):
     # Create Lecture
     lecture1 = models.Lecture(

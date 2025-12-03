@@ -12,6 +12,7 @@ from app.db import models
 from app.db import session as session_module
 from app.services.storage import clear_storage_client_cache
 
+
 @pytest.fixture(name="client")
 def fixture_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

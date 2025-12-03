@@ -12,6 +12,7 @@ from app.db import models
 from app.db import session as session_module
 from app.main import app
 
+
 @pytest.fixture(name="db_session")
 def fixture_db_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "test.sqlite3"
