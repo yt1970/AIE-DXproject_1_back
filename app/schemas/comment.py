@@ -6,7 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 # (出力) ファイルアップロード成功時の応答スキーマ
 class UploadResponse(BaseModel):
-    survey_batch_id: int
+    success: bool
+    job_id: str
     status_url: str
     message: str
 
@@ -23,17 +24,22 @@ class UploadRequestMetadata(BaseModel):
     uploader_id: Optional[int] = None
 
 
-# (出力) ステータス確認時の応答スキーマ
-class AnalysisStatusResponse(BaseModel):
-    survey_batch_id: int
-    status: str
-    total_comments: int
-    processed_count: int
-    task_id: Optional[str] = None
-    queued_at: datetime
-    processing_started_at: Optional[datetime] = None
-    processing_completed_at: Optional[datetime] = None
-    error_message: Optional[str] = None
+# (出力) ジョブ状態確認の応答スキーマ
+class JobResult(BaseModel):
+    lecture_id: int
+    batch_id: int
+    response_count: int
+
+class JobError(BaseModel):
+    code: str
+    message: str
+
+class JobStatusResponse(BaseModel):
+    job_id: str
+    status: str  # 'queued' | 'processing' | 'completed' | 'failed'
+    created_at: datetime
+    result: Optional[JobResult] = None
+    error: Optional[JobError] = None
 
 
 # (出力) 分析結果（コメント一覧）のスキーマ
@@ -81,10 +87,10 @@ class DuplicateCheckResponse(BaseModel):
 
 # (出力) アップロード削除APIの応答スキーマ
 class DeleteUploadResponse(BaseModel):
-    survey_batch_id: int
-    deleted: bool
-    removed_comments: int
-    removed_survey_responses: int
+    success: bool
+    deleted_batch_id: int
+    deleted_response_count: int
+    message: str
 
 
 # (入力/出力) 講義メトリクス（手動入力）
@@ -96,3 +102,16 @@ class LectureMetricsPayload(BaseModel):
 class LectureMetricsResponse(LectureMetricsPayload):
     survey_batch_id: int
     updated_at: Optional[datetime] = None
+
+
+# (出力) 削除対象バッチ検索の応答スキーマ
+class BatchSearchItem(BaseModel):
+    batch_id: int
+    lecture_id: int
+    session: str
+    lecture_date: date
+    batch_type: str
+    uploaded_at: datetime
+
+class BatchSearchResponse(BaseModel):
+    batches: list[BatchSearchItem]

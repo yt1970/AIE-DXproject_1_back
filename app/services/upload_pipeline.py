@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.analysis.analyzer import analyze_comment
 from app.db import models
+from app.schemas.analysis import QuestionType
 from app.schemas.comment import UploadRequestMetadata
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ def analyze_and_store_comments(
     db: Session,
     survey_batch: models.SurveyBatch,
     content_bytes: bytes,
+    filename: str | None = None,
     debug_logging: bool = False,
 ) -> tuple[int, int, int]:
     """
@@ -44,7 +46,8 @@ def analyze_and_store_comments(
         total_responses: アンケート回答行数
     """
 
-    csv_reader, analyzable_columns = _prepare_csv_reader(content_bytes)
+    reader, analyzable_columns = _prepare_data_reader(content_bytes, filename=filename)
+
 
     total_comments = 0
     processed_comments = 0
@@ -67,7 +70,7 @@ def analyze_and_store_comments(
         "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_friend",
     }
 
-    for row_index, row in enumerate(csv_reader, start=1):
+    for row_index, row in enumerate(reader, start=1):
         if debug_logs_enabled:
             logger.debug("--- Processing new CSV row ---")
             logger.debug("Raw row data from CSV: %s", row)
@@ -109,6 +112,9 @@ def analyze_and_store_comments(
             # LLM分析対象かを判定
             should_analyze_with_llm = column_name.startswith(LLM_ANALYSIS_TARGET_PREFIX)
 
+            # Map to Enum
+            q_type = _map_column_to_question_type(column_name)
+
             total_comments += 1
 
             analysis_result = analyze_comment(
@@ -126,7 +132,7 @@ def analyze_and_store_comments(
 
             comment_to_add = models.ResponseComment(
                 response_id=survey_response_record.id,
-                question_type=column_name,
+                question_type=q_type.value,
                 comment_text=comment_text,
                 llm_category=analysis_result.category_normalized.value,
                 llm_sentiment_type=(
@@ -158,11 +164,11 @@ def analyze_and_store_comments(
     return total_comments, processed_comments, total_responses
 
 
-def validate_csv_or_raise(content_bytes: bytes) -> None:
+def validate_csv_or_raise(content_bytes: bytes, filename: str | None = None) -> None:
     """
-    Perform CSV header validation. Raises CsvValidationError when invalid.
+    Perform header validation. Raises CsvValidationError when invalid.
     """
-    _prepare_csv_reader(content_bytes, for_validation_only=True)
+    _prepare_data_reader(content_bytes, filename=filename, for_validation_only=True)
 
 
 def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:
@@ -174,29 +180,66 @@ def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) ->
     return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))
 
 
-def _prepare_csv_reader(content_bytes: bytes, *, for_validation_only: bool = False):
-    try:
-        content_text = content_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError as exc:
-        raise CsvValidationError(f"CSV must be UTF-8 encoded: {exc}") from exc
+def _prepare_data_reader(content_bytes: bytes, filename: str | None = None, *, for_validation_only: bool = False):
+    """
+    Prepare a reader (list of dicts) from CSV or Excel content.
+    """
+    is_excel = filename and (filename.lower().endswith('.xlsx') or filename.lower().endswith('.xls'))
+    
+    if is_excel:
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content_bytes), data_only=True)
+            sheet = wb.active
+            rows = list(sheet.iter_rows(values_only=True))
+            if not rows:
+                raise CsvValidationError("Uploaded Excel file is empty.")
+            
+            header_row = rows[0]
+            data_rows = rows[1:]
+            
+            # Normalize headers
+            normalized_fieldnames = [str(h).strip() if h is not None else "" for h in header_row]
+            
+            # Create list of dicts
+            reader = []
+            for row in data_rows:
+                # Pad row with None if shorter than header
+                padded_row = list(row) + [None] * (len(normalized_fieldnames) - len(row))
+                item = {k: v for k, v in zip(normalized_fieldnames, padded_row)}
+                reader.append(item)
+                
+        except ImportError:
+            raise CsvValidationError("openpyxl is required for Excel files.")
+        except Exception as exc:
+            raise CsvValidationError(f"Failed to parse Excel file: {exc}") from exc
+            
+    else:
+        # CSV handling
+        try:
+            content_text = content_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise CsvValidationError(f"CSV must be UTF-8 encoded: {exc}") from exc
 
-    if not content_text:
-        raise CsvValidationError("Uploaded file is empty.")
+        if not content_text:
+            raise CsvValidationError("Uploaded file is empty.")
 
-    csv_stream = io.StringIO(content_text)
-    csv_reader = csv.DictReader(csv_stream)
+        csv_stream = io.StringIO(content_text)
+        csv_reader = csv.DictReader(csv_stream)
 
-    if not csv_reader.fieldnames:
-        raise CsvValidationError("CSV header row is missing.")
-
-    normalized_fieldnames = [header.strip() for header in csv_reader.fieldnames]
+        if not csv_reader.fieldnames:
+            raise CsvValidationError("CSV header row is missing.")
+            
+        normalized_fieldnames = [header.strip() for header in csv_reader.fieldnames]
+        csv_reader.fieldnames = normalized_fieldnames
+        reader = list(csv_reader) # Convert to list to unify interface
 
     if any(not header for header in normalized_fieldnames):
-        raise CsvValidationError("CSV header contains an empty column name.")
+        raise CsvValidationError("Header contains an empty column name.")
 
     if len(set(normalized_fieldnames)) != len(normalized_fieldnames):
         raise CsvValidationError(
-            "CSV header contains duplicate column names after normalization."
+            "Header contains duplicate column names after normalization."
         )
 
     analyzable_columns = [
@@ -206,15 +249,13 @@ def _prepare_csv_reader(content_bytes: bytes, *, for_validation_only: bool = Fal
     ]
     if not analyzable_columns:
         raise CsvValidationError(
-            "CSV must contain at least one column whose header starts with '（任意）' or '【必須】'."
+            "File must contain at least one column whose header starts with '（任意）' or '【必須】'."
         )
-
-    csv_reader.fieldnames = normalized_fieldnames
 
     if for_validation_only:
         return None, analyzable_columns
 
-    return csv_reader, analyzable_columns
+    return reader, analyzable_columns
 
 
 def _extract_comment_texts(
@@ -231,7 +272,7 @@ def _extract_comment_texts(
 def _normalize_cell(value: str | None) -> str:
     if value is None:
         return ""
-    return value.strip()
+    return str(value).strip()
 
 
 def _slugify(raw_value: str, *, allow_period: bool = False) -> str:
@@ -260,3 +301,25 @@ def _get_value_from_keys(
     if debug_logs_enabled:
         logger.debug("  - None of the candidate keys found in the row.")
     return None
+
+
+def _map_column_to_question_type(column_name: str) -> QuestionType:
+    """Map CSV column header to QuestionType enum."""
+    # Remove prefixes
+    name = column_name
+    for prefix in COMMENT_SAVE_TARGET_PREFIXES:
+        name = name.replace(prefix, "")
+    name = name.strip()
+    
+    if "学んだこと" in name or "学び" in name:
+        return QuestionType.learned
+    if "良かった点" in name or "良い点" in name:
+        return QuestionType.good_points
+    if "改善点" in name or "改善" in name:
+        return QuestionType.improvements
+    if "講師" in name and "フィードバック" in name:
+        return QuestionType.instructor_feedback
+    if "要望" in name:
+        return QuestionType.future_requests
+    
+    return QuestionType.free_comment

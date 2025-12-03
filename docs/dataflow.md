@@ -12,7 +12,7 @@ graph TB
 
     subgraph API["FastAPI Application"]
         FastAPI["app/main.py"]
-        Upload["/api/v1/uploads"]
+        Upload["/api/v1/surveys/upload"]
         Lectures["/api/v1/lectures"]
         Comments["/api/v1/comments"]
         Metrics["/api/v1/metrics"]
@@ -78,13 +78,13 @@ graph TB
 ## 処理ステージ
 
 ### 1. CSVアップロード（API層）
-- `POST /api/v1/uploads` がCSVとメタデータ（`course_name`, `lecture_on`, `lecture_number`, 任意で `lecture_id`/`uploader_id`）を受信。
-- 重複検知は `GET /api/v1/uploads/check-duplicate` をクライアント側で先に叩く運用。本体は常に受理し、即座に非同期処理へ移行。
+- `POST /api/v1/surveys/upload` がCSVとメタデータ（`course_name`, `lecture_on`, `lecture_number`, 任意で `lecture_id`/`uploader_id`）を受信。
+- 重複検知は `GET /api/v1/surveys/batches/search` をクライアント側で先に叩く運用。本体は常に受理し、即座に非同期処理へ移行。
 
 ```json
 {
   "survey_batch_id": 123,
-  "status_url": "/api/v1/uploads/123/status",
+  "status_url": "/api/v1/jobs/123",
   "message": "Upload accepted. Analysis will run in the background."
 }
 ```
@@ -98,7 +98,7 @@ graph TB
 
 ### 3. 非同期タスク投入（API→Worker）
 - APIは `process_uploaded_file.delay(batch_id, s3_key)` を即時実行し、以降の処理はCeleryワーカーに委譲。
-- 進捗テーブルは存在せず、`SurveySummary` の有無で完了判定。`GET /api/v1/uploads/{batch_id}/status` はDB照会だけで応答。
+- 進捗テーブルは存在せず、`SurveySummary` の有無で完了判定。`GET /api/v1/jobs/{job_id}` はDB照会だけで応答。
 
 ### 4. Upload Pipeline（Worker内）
 すべて `process_uploaded_file` タスクで完結し、HTTPリクエストは既に応答済みです。
@@ -145,18 +145,17 @@ _ = analyze_and_store_comments(
 - **CommentSummary** (`comment_summaries`): 感情/カテゴリ/重要度別の件数を保持。重要コメントは `importance_medium + importance_high` を合算して再利用。
 
 ### 7. 結果取得（API層）
-- **講義一覧** `GET /api/v1/lectures` → `lectures` テーブル。ただし実装は旧カラムへ依存しており、利用前に修正が必要。
+- **講義一覧** `GET /api/v1/courses` → `lectures` テーブル。講座名・年度・期間でグルーピングして返却。
 - **コメント一覧** `GET /api/v1/courses/{course_name}/comments` → `response_comments`。`version` クエリで preliminary/final を切替。
-- **メトリクス** `GET/PUT /api/v1/uploads/{batch_id}/metrics` および `GET/PUT /api/v1/lectures/{lecture_id}/metrics` → `survey_batches.zoom_participants` / `recording_views` を管理。
-- **ダッシュボード** `GET /api/v1/dashboard/*` → 旧スキーマ（`lecture_number`, `nps_score` 等）を参照しており、現状は例外が発生。
-- **ステータス** `GET /api/v1/uploads/{batch_id}/status` → `SurveySummary` 有無と `ResponseComment` 件数で完了判定する設計だが、欠落カラム参照のため未修復。
+- **メトリクス** `GET/PUT /api/v1/uploads/{survey_batch_id}/metrics` および `GET/PUT /api/v1/lectures/{lecture_id}/metrics` → `survey_batches.zoom_participants` / `recording_views` を管理。
+- **ダッシュボード** `GET /api/v1/dashboard/*` → `Lecture` と `SurveySummary` を集計して返却。
+- **ステータス** `GET /api/v1/jobs/{job_id}` → `SurveySummary` 有無と `ResponseComment` 件数で完了判定する設計だが、欠落カラム参照のため未修復。
 
 ## 既知の課題
 
 1. **ステータスAPIのAttributeError**: `ResponseComment.survey_batch_id` が存在しないため、`SurveyResponse` とのJOINまたはカラム再導入が必須。
 2. **集計スキーマとの不整合**: `app/services/summary.py` が削除済み `score_*` カラムへ `setattr` しており、`avg_*` へ保存されない。
-3. **ダッシュボードAPIの旧スキーマ依存**: `SurveyBatch.lecture_number`, `SurveySummary.nps_score` などを参照しているため、`Lecture.session` と `SurveySummary.nps/avg_*` を使うよう改修するまで利用不可。
-4. **講義/コースAPIのフィールド不一致**: `Lecture.course_name` 等の不存在カラムを参照。削除処理でも `SurveyBatch.status` や `ResponseComment.survey_batch_id` を想定しており、JOIN見直しが必要。
+3. **講義/コースAPIのフィールド不一致**: `Lecture.course_name` 等の不存在カラムを参照。削除処理でも `SurveyBatch.status` や `ResponseComment.survey_batch_id` を想定しており、JOIN見直しが必要。
 5. **削除フロー未完成**: アップロード/講義削除ともに `ResponseComment` のカスケードが機能せず、`analysis_version` 条件も未整理。
 
 ## エラーハンドリング

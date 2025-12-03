@@ -1,21 +1,15 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.course import (
-    LectureCategory,
-    LectureCreate,
-    LectureDetailResponse,
-    LectureSummaryResponse,
-    LectureUpdate,
-    ScoreDistributionSchema,
-)
+from app.schemas.course import LectureDetailResponse, ScoreDistributionSchema
 
 router = APIRouter()
 
@@ -26,229 +20,14 @@ def _normalize_text(value: Optional[str]) -> Optional[str]:
     return value.strip()
 
 
-@router.get("/lectures", response_model=List[LectureSummaryResponse])
-def list_lectures(
-    db: Session = Depends(get_db),
-    name: Optional[str] = None,
-    year: Optional[int] = None,
-    period: Optional[str] = None,
-    category: Optional[LectureCategory] = None,
-    sort_by: str = "course_name",
-    sort_order: str = "asc",
-) -> List[LectureInfo]:
-    """オプションのフィルタとソート機能付きで講義の一覧を返す。"""
-    q = db.query(models.Lecture)
-    if name:
-        q = q.filter(func.lower(models.Lecture.name).like(f"%{name.lower()}%"))
-    if year is not None:
-        q = q.filter(models.Lecture.academic_year == year)
-    if period:
-        q = q.filter(func.lower(models.Lecture.term) == period.lower())
-    if category:
-        q = q.filter(models.Lecture.category == category.value)
-
-    sort_map = {
-        "course_name": models.Lecture.name,
-        "academic_year": models.Lecture.academic_year,
-        "period": models.Lecture.term,
-    }
-    sort_col = sort_map.get(sort_by, models.Lecture.name)
-    sort_exp = sort_col.desc() if sort_order.lower() == "desc" else sort_col.asc()
-    lectures = q.order_by(sort_exp).all()
-    return [
-        LectureSummaryResponse(
-            id=lec.id,
-            course_name=lec.name,
-            academic_year=(
-                str(lec.academic_year) if lec.academic_year is not None else None
-            ),
-            period=lec.term,
-            term=lec.term,
-            name=lec.name or lec.name,
-            session=lec.session,
-            instructor_name=lec.instructor_name,
-            lecture_on=lec.lecture_on,
-        )
-        for lec in lectures
-    ]
 
 
-@router.get("/lectures/metadata")
-def get_lecture_metadata(db: Session = Depends(get_db)) -> dict:
-    """フォームのドロップダウン用のメタデータを返す。コース、年度、期間を含む。"""
-    # 講義テーブルから取得
-    courses = [
-        row[0]
-        for row in db.query(models.Lecture.name).distinct().all()
-        if row[0]
-    ]
-    years = [
-        row[0]
-        for row in db.query(models.Lecture.academic_year).distinct().all()
-        if row[0] is not None
-    ]
-    terms = [
-        row[0] for row in db.query(models.Lecture.term).distinct().all() if row[0]
-    ]
-
-    return {"courses": courses, "years": years, "terms": terms}
 
 
-@router.post("/lectures", response_model=LectureSummaryResponse)
-def create_lecture(
-    payload: LectureCreate, db: Session = Depends(get_db)
-) -> LectureInfo:
-    """講義を作成する。コース名、年度、期間の組み合わせで重複を拒否する。"""
-    course_name = _normalize_text(payload.course_name)
-    period = _normalize_text(payload.period)
-    if not course_name or not period:
-        raise HTTPException(status_code=422, detail="コース名と期間は必須です")
-    # Pydantic Enumがバリデーションするため、ここでは変換のみ
-    category = payload.category or LectureCategory.その他
-
-    exists = (
-        db.query(models.Lecture)
-        .filter(
-            func.lower(models.Lecture.course_name) == func.lower(course_name),
-            models.Lecture.academic_year == payload.academic_year,
-            func.lower(models.Lecture.period) == func.lower(period),
-        )
-        .first()
-    )
-    if exists:
-        raise HTTPException(status_code=409, detail="講義は既に存在します")
-
-    lec = models.Lecture(
-        course_name=course_name,
-        academic_year=payload.academic_year,
-        period=period,
-        category=category.value,
-    )
-    db.add(lec)
-    db.commit()
-    db.refresh(lec)
-    return LectureSummaryResponse(
-        id=lec.id,
-        course_name=lec.course_name,
-        academic_year=str(lec.academic_year),
-        period=lec.period,
-        term=lec.term,
-        name=lec.name or lec.course_name,
-        session=lec.session,
-        instructor_name=lec.instructor_name,
-        lecture_on=lec.lecture_on,
-    )
 
 
-@router.put("/lectures/{lecture_id}", response_model=LectureSummaryResponse)
-def update_lecture(
-    lecture_id: int, payload: LectureUpdate, db: Session = Depends(get_db)
-) -> LectureInfo:
-    """講義のフィールドを更新する。更新後の重複を防止する。"""
-    lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
-    if not lec:
-        raise HTTPException(status_code=404, detail="講義が見つかりません")
-
-    # Pydantic Enumがバリデーションするため追加チェックは不要
-
-    if payload.course_name is not None:
-        lec.course_name = _normalize_text(payload.course_name) or lec.course_name
-    if payload.period is not None:
-        norm = _normalize_text(payload.period)
-        if not norm:
-            raise HTTPException(status_code=422, detail="期間は空にできません")
-        lec.period = norm
-    if payload.academic_year is not None:
-        lec.academic_year = payload.academic_year
-    if payload.category is not None:
-        lec.category = payload.category.value
-
-    # 重複チェック
-    dup = (
-        db.query(models.Lecture)
-        .filter(
-            models.Lecture.id != lecture_id,
-            func.lower(models.Lecture.course_name) == func.lower(lec.course_name),
-            models.Lecture.academic_year == lec.academic_year,
-            func.lower(models.Lecture.period) == func.lower(lec.period),
-        )
-        .first()
-    )
-    if dup:
-        raise HTTPException(status_code=409, detail="更新後に重複する講義が存在します")
-
-    db.add(lec)
-    db.commit()
-    db.refresh(lec)
-    return LectureSummaryResponse(
-        id=lec.id,
-        course_name=lec.course_name,
-        academic_year=str(lec.academic_year),
-        period=lec.period,
-        term=lec.term,
-        name=lec.name or lec.course_name,
-        session=lec.session,
-        instructor_name=lec.instructor_name,
-        lecture_on=lec.lecture_on,
-    )
 
 
-@router.delete("/lectures/{lecture_id}")
-def delete_lecture(lecture_id: int, db: Session = Depends(get_db)) -> dict:
-    """講義と関連するアップロード、コメント、メトリクスを削除する。注意して使用すること。"""
-    lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
-    if not lec:
-        raise HTTPException(status_code=404, detail="講義が見つかりません")
-    
-    batches = (
-        db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.lecture_id == lecture_id)
-        .all()
-    )
-    # 処理中のファイルがある場合は削除をブロック
-    if any(b.status == "PROCESSING" for b in batches):
-        raise HTTPException(
-            status_code=409, detail="一部のアップロードが現在処理中です"
-        )
-    
-    removed_comments = 0
-    removed_survey_responses = 0
-    
-    for b in batches:
-        removed_comments += (
-            db.query(models.ResponseComment)
-            .filter(models.ResponseComment.survey_batch_id == b.id)
-            .delete(synchronize_session=False)
-            or 0
-        )
-        removed_survey_responses += (
-            db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.survey_batch_id == b.id)
-            .delete(synchronize_session=False)
-            or 0
-        )
-        
-        db.query(models.SurveySummary).filter(
-            models.SurveySummary.survey_batch_id == b.id
-        ).delete(synchronize_session=False)
-        db.query(models.CommentSummary).filter(
-            models.CommentSummary.survey_batch_id == b.id
-        ).delete(synchronize_session=False)
-        
-        db.delete(b)
-        
-    # 最後に講義を削除
-    db.query(models.Lecture).filter(models.Lecture.id == lecture_id).delete(
-        synchronize_session=False
-    )
-    db.commit()
-    return {
-        "lecture_id": lecture_id,
-        "deleted": True,
-        "removed_batches": len(batches),
-        "removed_comments": removed_comments,
-        "removed_survey_responses": removed_survey_responses,
-    }
 
 
 @router.get("/lectures/{lecture_id}", response_model=LectureDetailResponse)
@@ -276,7 +55,193 @@ def get_lecture_detail(lecture_id: int, db: Session = Depends(get_db)) -> Lectur
         instructor_name=lec.instructor_name,
         lecture_on=lec.lecture_on,
         description=lec.description,
-        created_at=lec.created_at,
         updated_at=lec.updated_at,
         score_distributions=[ScoreDistributionSchema.model_validate(d) for d in distributions],
+    )
+
+from app.schemas.analysis import (
+    AverageScoreItem,
+    CommentCategory,
+    CommentItem,
+    Importance,
+    QuestionType,
+    RatingDistribution,
+    ScoreDistributions,
+    Sentiment,
+    SessionAnalysisResponse,
+    SessionLectureInfo,
+    SessionNPS,
+)
+
+
+@router.get("/lectures/{lecture_id}/analysis", response_model=SessionAnalysisResponse)
+def get_lecture_analysis(
+    lecture_id: int,
+    batch_type: str = Query(..., description="preliminary/confirmed"),
+    student_attribute: str = Query("all", description="受講生属性フィルタ"),
+    db: Session = Depends(get_db),
+) -> SessionAnalysisResponse:
+    """
+    特定の講義回の詳細分析データを取得する。
+    """
+    lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
+    if not lec:
+        raise HTTPException(status_code=404, detail="Lecture not found")
+
+    # Find the relevant batch
+    batch = (
+        db.query(models.SurveyBatch)
+        .filter(
+            models.SurveyBatch.lecture_id == lecture_id,
+            models.SurveyBatch.batch_type == batch_type
+        )
+        .order_by(models.SurveyBatch.uploaded_at.desc())
+        .first()
+    )
+
+    if not batch:
+        # Return empty/default response if no batch found
+        # Or raise 404? API def doesn't specify behavior if no data.
+        # Let's return a basic structure with 0 counts.
+        return SessionAnalysisResponse(
+            lecture_info=SessionLectureInfo(
+                lecture_id=lec.id,
+                session=lec.session,
+                lecture_date=str(lec.lecture_on),
+                instructor_name=lec.instructor_name,
+                description=lec.description,
+                response_count=0
+            ),
+            nps=SessionNPS(
+                score=0.0, promoters_count=0, promoters_percentage=0.0,
+                neutrals_count=0, neutrals_percentage=0.0,
+                detractors_count=0, detractors_percentage=0.0
+            ),
+            average_scores=[],
+            score_distributions=ScoreDistributions(
+                overall_satisfaction=[], learning_amount=[], comprehension=[],
+                operations=[], instructor_satisfaction=[], time_management=[],
+                question_handling=[], speaking_style=[], preparation=[],
+                motivation=[], future_application=[]
+            ),
+            important_comments=[],
+            comments=[]
+        )
+
+    # Fetch Summary
+    summary = (
+        db.query(models.SurveySummary)
+        .filter(
+            models.SurveySummary.survey_batch_id == batch.id,
+            models.SurveySummary.student_attribute == student_attribute
+        )
+        .first()
+    )
+
+    # Fetch Score Distributions
+    dists = (
+        db.query(models.ScoreDistribution)
+        .filter(
+            models.ScoreDistribution.survey_batch_id == batch.id,
+            models.ScoreDistribution.student_attribute == student_attribute
+        )
+        .all()
+    )
+    
+    # Map distributions
+    dist_map = defaultdict(list)
+    for d in dists:
+        dist_map[d.question_key].append(RatingDistribution(rating=d.score_value, count=d.count))
+
+    # Fetch Comments (filtering by attribute is complex if not stored in comment summary, 
+    # but here we fetch raw comments or summaries? API says "comments".
+    # Assuming we fetch raw comments for the list)
+    # Note: ResponseComment has no direct attribute column, it's on SurveyResponse.
+    
+    q_comments = (
+        db.query(models.ResponseComment, models.SurveyResponse)
+        .join(models.SurveyResponse, models.ResponseComment.response_id == models.SurveyResponse.id)
+        .filter(models.SurveyResponse.survey_batch_id == batch.id)
+    )
+    if student_attribute != 'all':
+        q_comments = q_comments.filter(models.SurveyResponse.student_attribute == student_attribute)
+        
+    raw_comments = q_comments.all()
+    
+    comment_items = []
+    important_items = []
+    
+    for c, r in raw_comments:
+
+
+        item = CommentItem(
+            id=str(c.id),
+            text=c.comment_text,
+            sentiment=c.llm_sentiment_type,
+            category=c.llm_category,
+            importance=c.llm_importance_level,
+            question_type=c.question_type,
+        )
+        comment_items.append(item)
+        if c.llm_importance_level == Importance.high:
+            important_items.append(item)
+
+    # Calculate NPS percentages
+    total_nps_responses = summary.response_count if summary else 0
+    promoters_pct = 0.0
+    neutrals_pct = 0.0
+    detractors_pct = 0.0
+    
+    if total_nps_responses > 0 and summary:
+        promoters_pct = (summary.promoter_count / total_nps_responses) * 100.0
+        neutrals_pct = (summary.passive_count / total_nps_responses) * 100.0
+        detractors_pct = (summary.detractor_count / total_nps_responses) * 100.0
+
+    # Construct Response
+    return SessionAnalysisResponse(
+        lecture_info=SessionLectureInfo(
+            lecture_id=lec.id,
+            session=lec.session,
+            lecture_date=str(lec.lecture_on),
+            instructor_name=lec.instructor_name,
+            description=lec.description,
+            response_count=summary.response_count if summary else 0
+        ),
+        nps=SessionNPS(
+            score=float(summary.nps) if summary and summary.nps is not None else 0.0,
+            promoters_count=summary.promoter_count if summary else 0,
+            promoters_percentage=round(promoters_pct, 1),
+            neutrals_count=summary.passive_count if summary else 0,
+            neutrals_percentage=round(neutrals_pct, 1),
+            detractors_count=summary.detractor_count if summary else 0,
+            detractors_percentage=round(detractors_pct, 1)
+        ),
+        average_scores=[
+            AverageScoreItem(category="総合満足度", category_key="overall_satisfaction", score=float(summary.avg_satisfaction_overall or 0), full_mark=5),
+            AverageScoreItem(category="学習量", category_key="learning_amount", score=float(summary.avg_content_volume or 0), full_mark=5),
+            AverageScoreItem(category="理解度", category_key="comprehension", score=float(summary.avg_content_understanding or 0), full_mark=5),
+            AverageScoreItem(category="運営", category_key="operations", score=float(summary.avg_content_announcement or 0), full_mark=5),
+            AverageScoreItem(category="講師満足度", category_key="instructor_satisfaction", score=float(summary.avg_instructor_overall or 0), full_mark=5),
+            AverageScoreItem(category="時間使い方", category_key="time_management", score=float(summary.avg_instructor_time or 0), full_mark=5),
+            AverageScoreItem(category="質問対応", category_key="question_handling", score=float(summary.avg_instructor_qa or 0), full_mark=5),
+            AverageScoreItem(category="話し方", category_key="speaking_style", score=float(summary.avg_instructor_speaking or 0), full_mark=5),
+            AverageScoreItem(category="予習", category_key="preparation", score=float(summary.avg_self_preparation or 0), full_mark=5),
+            AverageScoreItem(category="意欲", category_key="motivation", score=float(summary.avg_self_motivation or 0), full_mark=5),
+            AverageScoreItem(category="今後活用", category_key="future_application", score=float(summary.avg_self_future or 0), full_mark=5),
+        ] if summary else [],
+        score_distributions=ScoreDistributions(
+            overall_satisfaction=dist_map.get("score_satisfaction_overall", []),
+            learning_amount=dist_map.get("score_content_volume", []),
+            comprehension=dist_map.get("score_content_understanding", []),
+            operations=dist_map.get("score_content_announcement", []),
+            instructor_satisfaction=dist_map.get("score_instructor_overall", []),
+            time_management=dist_map.get("score_instructor_time", []),
+            question_handling=dist_map.get("score_instructor_qa", []),
+            speaking_style=dist_map.get("score_instructor_speaking", []),
+            preparation=dist_map.get("score_self_preparation", []),
+            motivation=dist_map.get("score_self_motivation", []),
+            future_application=dist_map.get("score_self_future", [])
+        ),
+        important_comments=important_items,
+        comments=comment_items
     )
