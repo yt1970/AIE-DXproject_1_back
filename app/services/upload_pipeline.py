@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.analysis.analyzer import analyze_comment
 from app.db import models
+from app.schemas.analysis import QuestionType
 from app.schemas.comment import UploadRequestMetadata
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,9 @@ def analyze_and_store_comments(
             # LLM分析対象かを判定
             should_analyze_with_llm = column_name.startswith(LLM_ANALYSIS_TARGET_PREFIX)
 
+            # Map to Enum
+            q_type = _map_column_to_question_type(column_name)
+
             total_comments += 1
 
             analysis_result = analyze_comment(
@@ -128,7 +132,7 @@ def analyze_and_store_comments(
 
             comment_to_add = models.ResponseComment(
                 response_id=survey_response_record.id,
-                question_type=column_name,
+                question_type=q_type.value,
                 comment_text=comment_text,
                 llm_category=analysis_result.category_normalized.value,
                 llm_sentiment_type=(
@@ -297,3 +301,25 @@ def _get_value_from_keys(
     if debug_logs_enabled:
         logger.debug("  - None of the candidate keys found in the row.")
     return None
+
+
+def _map_column_to_question_type(column_name: str) -> QuestionType:
+    """Map CSV column header to QuestionType enum."""
+    # Remove prefixes
+    name = column_name
+    for prefix in COMMENT_SAVE_TARGET_PREFIXES:
+        name = name.replace(prefix, "")
+    name = name.strip()
+    
+    if "学んだこと" in name or "学び" in name:
+        return QuestionType.learned
+    if "良かった点" in name or "良い点" in name:
+        return QuestionType.good_points
+    if "改善点" in name or "改善" in name:
+        return QuestionType.improvements
+    if "講師" in name and "フィードバック" in name:
+        return QuestionType.instructor_feedback
+    if "要望" in name:
+        return QuestionType.future_requests
+    
+    return QuestionType.free_comment

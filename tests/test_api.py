@@ -79,7 +79,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
             )
         },
     )
-    assert response.status_code == 200, response.text
+    assert response.status_code == 202, response.text
     return int(response.json()["job_id"])
 
 

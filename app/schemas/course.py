@@ -38,7 +38,7 @@ class BatchInfo(BaseModel):
     uploaded_at: datetime
 
 
-class LectureDetailInfo(BaseModel):
+class LectureInfo(BaseModel):
     id: int
     session: str
     lecture_date: date
@@ -51,7 +51,7 @@ class CourseDetailResponse(BaseModel):
     name: str
     academic_year: int
     term: str
-    lectures: List[LectureDetailInfo]
+    lectures: List[LectureInfo]
 
 
 # --- Legacy / Internal Schemas (Keep if needed for other parts, or refactor later) ---
@@ -95,7 +95,6 @@ class LectureSummaryResponse(BaseModel):
 
 class LectureDetailResponse(LectureSummaryResponse):
     description: Optional[str] = None
-    created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     score_distributions: List[ScoreDistributionSchema] = []
     model_config = ConfigDict(from_attributes=True)

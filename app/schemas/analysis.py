@@ -185,7 +185,7 @@ class CommentItem(BaseModel):
     category: Optional[CommentCategory] = None
     importance: Optional[Importance] = None
     question_type: QuestionType
-    created_at: str
+
 
 class SessionAnalysisResponse(BaseModel):
     lecture_info: SessionLectureInfo

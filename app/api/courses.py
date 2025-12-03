@@ -12,7 +12,7 @@ from app.schemas.course import (
     CourseItem,
     SessionSummary,
     CourseDetailResponse,
-    LectureDetailInfo,
+    LectureInfo,
     BatchInfo,
     AnalysisType,
 )
@@ -79,6 +79,7 @@ def list_courses(
             sessions=sessions
         ))
 
+    course_items.sort(key=lambda x: (-x.academic_year, x.name))
     return CourseListResponse(courses=course_items)
 
 
@@ -106,7 +107,7 @@ def get_course_detail(
     if not lectures:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    lecture_infos: List[LectureDetailInfo] = []
+    lecture_infos: List[LectureInfo] = []
     for lec in lectures:
         batches: List[BatchInfo] = []
         for b in lec.survey_batches:
@@ -124,7 +125,7 @@ def get_course_detail(
                 uploaded_at=b.uploaded_at
             ))
         
-        lecture_infos.append(LectureDetailInfo(
+        lecture_infos.append(LectureInfo(
             id=lec.id,
             session=lec.session,
             lecture_date=lec.lecture_on,

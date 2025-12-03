@@ -5,7 +5,7 @@ import logging
 from datetime import UTC, date, datetime
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query, status
 from pydantic import BaseModel, TypeAdapter, ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -101,7 +101,7 @@ def search_batches(
 def delete_survey_batch(
     batch_id: int,
     db: Session = Depends(get_db),
-) -> dict: # Using dict to match DeleteResponse interface loosely or use DeleteUploadResponse
+) -> DeleteUploadResponse:
     """
     特定の講義回・分析タイプのデータを削除する。
     """
@@ -175,7 +175,7 @@ def delete_survey_batch(
     )
 
 
-@router.post("/surveys/upload", response_model=UploadResponse)
+@router.post("/surveys/upload", response_model=UploadResponse, status_code=status.HTTP_202_ACCEPTED)
 async def upload_survey_data(
     file: Annotated[UploadFile, File()],
     course_name: Annotated[str, Form()],
@@ -185,6 +185,7 @@ async def upload_survey_data(
     lecture_date: Annotated[date, Form()],
     instructor_name: Annotated[str, Form()],
     batch_type: Annotated[str, Form()],
+    description: Annotated[Optional[str], Form()] = None,
     zoom_participants: Annotated[Optional[int], Form()] = None,
     recording_views: Annotated[Optional[int], Form()] = None,
     db: Session = Depends(get_db),
@@ -254,7 +255,7 @@ async def upload_survey_data(
             session=session,
             lecture_on=lecture_date,
             instructor_name=instructor_name,
-            description=f"Uploaded {batch_type}",
+            description=description,
         )
         db.add(lecture)
         db.commit()

@@ -22,7 +22,7 @@ def get_attributes():
             {"key": "student", "label": "学生"},
             {"key": "corporate", "label": "会員企業"},
             {"key": "invited", "label": "招待枠"},
-            {"key": "faculty", "label": "教職員"},
+            {"key": "faculty", "label": "教員"},
             {"key": "other", "label": "その他/不明"},
         ]
     )

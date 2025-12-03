@@ -58,7 +58,6 @@ def get_lecture_detail(lecture_id: int, db: Session = Depends(get_db)) -> Lectur
         instructor_name=lec.instructor_name,
         lecture_on=lec.lecture_on,
         description=lec.description,
-        created_at=lec.created_at,
         updated_at=lec.updated_at,
         score_distributions=[ScoreDistributionSchema.model_validate(d) for d in distributions],
     )
@@ -176,41 +175,18 @@ def get_lecture_analysis(
     important_items = []
     
     for c, r in raw_comments:
-        # Map Enums safely
-        sentiment = None
-        if c.llm_sentiment_type:
-            try: sentiment = Sentiment(c.llm_sentiment_type)
-            except: pass
-            
-        category = None
-        if c.llm_category:
-            try: category = CommentCategory(c.llm_category)
-            except: pass
-            
-        importance = None
-        if c.llm_importance_level:
-            try: importance = Importance(c.llm_importance_level)
-            except: pass
-            
-        # Question Type mapping needs care as DB might have different values
-        # For now assuming string match or fallback
-        q_type = QuestionType.free_comment # Default
-        try: 
-            if c.question_type:
-                q_type = QuestionType(c.question_type)
-        except: pass
+
 
         item = CommentItem(
             id=str(c.id),
             text=c.comment_text,
-            sentiment=sentiment,
-            category=category,
-            importance=importance,
-            question_type=q_type,
-            created_at=batch.uploaded_at.isoformat() if batch.uploaded_at else ""
+            sentiment=c.llm_sentiment_type,
+            category=c.llm_category,
+            importance=c.llm_importance_level,
+            question_type=c.question_type,
         )
         comment_items.append(item)
-        if importance == Importance.high:
+        if c.llm_importance_level == Importance.high:
             important_items.append(item)
 
     # Calculate NPS percentages
