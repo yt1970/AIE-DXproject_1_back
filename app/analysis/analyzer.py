@@ -147,7 +147,6 @@ def analyze_comment(
     llm_structured.category_normalized = category_enum
     llm_structured.importance_normalized = importance_enum
     llm_structured.risk_level_normalized = risk_level_enum
-    llm_structured.summary = llm_structured.summary or _fallback_summary(comment_text)
 
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
@@ -169,14 +168,6 @@ def _dedupe_warnings(warnings: List[str]) -> List[str]:
             deduped.append(warning)
             seen.add(warning)
     return deduped
-
-
-def _fallback_summary(comment_text: str, limit: int = 120) -> str:
-    """LLMが要約を返さなかった場合のフォールバック要約。"""
-    normalized = comment_text.strip()
-    if len(normalized) <= limit:
-        return normalized
-    return normalized[: max(limit - 3, 0)] + "..."
 
 
 SENTIMENT_ALIASES = {
