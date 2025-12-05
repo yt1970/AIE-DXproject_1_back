@@ -94,7 +94,7 @@ def test_llm_client_requires_comment_text() -> None:
     [
         ("sentiment", {"sentiment": "neutral"}),
         ("importance", {"importance_level": "low", "importance_score": 0.1}),
-        ("categorization", {"category": "その他", "tags": ["mock"]}),
+        ("categorization", {"category": "その他"}),
         ("risk_assessment", {"risk_level": "none", "is_safe": True}),
         ("full_analysis", {"summary": "mock"}),
     ],
