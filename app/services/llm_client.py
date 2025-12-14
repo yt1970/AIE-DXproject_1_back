@@ -146,7 +146,7 @@ class LLMClient:
             elif analysis_type == "importance":
                 mock_payload = {"importance_level": "low", "importance_score": 0.1}
             elif analysis_type == "categorization":
-                mock_payload = {"category": "その他", "tags": ["mock"]}
+                mock_payload = {"category": "その他"}
             elif analysis_type == "risk_assessment":
                 mock_payload = {"risk_level": "none", "is_safe": True}
             else:  # full_analysis or unknown
