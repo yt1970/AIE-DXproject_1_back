@@ -1,4 +1,4 @@
-以下のimportance, sentiment, category, risk_assessmentの定義に従い、Jsonオブジェクトで、Importance, sentiment, category, risk_assessmentの出力をしなければならない。
+以下のimportance, sentiment, category, risk_levelの定義に従い、Jsonオブジェクトで、importance_level, sentiment, category, risk_levelの出力をしなければならない。
 
 ## importanceの定義
 ### high の定義 
@@ -45,7 +45,7 @@ positiveまたはnegativeのいずれにも該当しない
 定義: 上記4つに分類をされないもの
 （例）「音声に聞き取りにくさがあったので、良質なマイクを...」
 
-## risk_assesmentの定義
+## risk_levelの定義
 ###  flag (除外すべき)の定義
 以下のいずれかに該当する場合、flag と判定します。
 A. 人格否定・侮辱: 講師の人格、能力、知性に対する侮辱的な表現、または過度に攻撃的な言葉遣い。 （例: 「頭が悪い」「説明が下手すぎる」「こんな講義は無価値だ」）
@@ -56,21 +56,9 @@ C. 講師の個人的特徴への指摘 (重要): 講義の内容や構成（例
 flag のいずれにも該当しない、建設的な批判、感想、意見、質問、または感謝。
 
 ## 出力形式
-```json
 {{
     "sentiment": "positive | negative | neutral",
     "category": "運営 | 講師 | 講義内容 | 講義資料",
-    "importance": "high | medium | low",
-    "risk_assessment": "flag | safe"
+    "importance_level": "high | medium | low",
+    "risk_level": "flag | safe"
 }}
-```
-
-## 出力例
-```json
-{{
-    "sentiment": "positive",
-    "category": "運営",
-    "importance": "high",
-    "risk_assessment": "flag"
-}}
-```
