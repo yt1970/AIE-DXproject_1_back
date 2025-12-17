@@ -187,8 +187,14 @@ def get_lecture_analysis(
         if c.llm_priority == "high":
             priority_items.append(item)
 
-    # Calculate Fix Difficulty Counts (placeholder as logic was removed)
+    # Calculate Fix Difficulty Counts
     fix_difficulty_counts = {"easy": 0, "hard": 0}
+    for c, _ in raw_comments:
+        val = c.llm_fix_difficulty
+        if val in ("easy", "容易"):
+            fix_difficulty_counts["easy"] += 1
+        elif val in ("hard", "needed", "困難"):
+            fix_difficulty_counts["hard"] += 1
 
     # Calculate NPS percentages
     total_nps_responses = summary.response_count if summary else 0

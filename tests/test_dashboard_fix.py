@@ -103,6 +103,11 @@ def test_dashboard_overview_success(client: TestClient):
     # Score: (7-3)/15 * 100 = 4/15 * 100 = 26.66... -> 26.7
     assert data["nps"]["score"] == 26.7
     assert data["nps"]["total"] == 15
+    
+    # Check Fix Difficulty
+    assert "fix_difficulty" in data
+    assert "easy" in data["fix_difficulty"]
+    assert "hard" in data["fix_difficulty"]
 
 def test_dashboard_per_lecture_success(client: TestClient):
     # Setup data (reuse if possible, but clean DB per test usually)
@@ -125,6 +130,9 @@ def test_dashboard_per_lecture_success(client: TestClient):
     l1 = next(l for l in data["lectures"] if l["lecture_number"] == "第1回")
     assert l1["nps"]["score"] == 20.0
     assert l1["scores"]["overall_satisfaction"] == 4.5
+    assert "fix_difficulty" in l1
+    assert "easy" in l1["fix_difficulty"]
+    assert "hard" in l1["fix_difficulty"]
     
     l2 = next(l for l in data["lectures"] if l["lecture_number"] == "第2回")
     assert l2["nps"]["score"] == 10.0

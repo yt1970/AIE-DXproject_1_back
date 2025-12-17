@@ -111,7 +111,7 @@ def _aggregate_nps(
 
 def _comment_stats(
     rows: List[models.CommentSummary],
-) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
+) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
     sentiments = {"positive": 0, "negative": 0, "neutral": 0}
     categories = {
         "lecture_content": 0,
@@ -120,6 +120,8 @@ def _comment_stats(
         "other": 0,
     }
     priority = {"low": 0, "medium": 0, "high": 0}
+
+    fix_difficulty = {"easy": 0, "hard": 0}
 
     for row in rows:
         if row.analysis_type == "sentiment" and row.label in sentiments:
@@ -136,36 +138,46 @@ def _comment_stats(
                 categories[mapped] += int(row.count or 0)
         elif row.analysis_type == "priority" and row.label in priority:
             priority[row.label] += int(row.count or 0)
+        elif row.analysis_type == "fix_difficulty" and row.label in fix_difficulty:
+            fix_difficulty[row.label] += int(row.count or 0)
 
     comments_count = max(
         sum(sentiments.values()),
         sum(categories.values()),
         sum(priority.values()),
+        sum(fix_difficulty.values()),
     )
     # important_count is now priority_high + priority_medium
     important_count = priority["medium"] + priority["high"]
-    return sentiments, categories, priority, comments_count, important_count
+    return sentiments, categories, priority, fix_difficulty, comments_count, important_count
 
 
 def _aggregate_sentiments(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    sentiments, _, _, _, _ = _comment_stats(summaries)
+    sentiments, _, _, _, _, _ = _comment_stats(summaries)
     return sentiments
 
 
 def _aggregate_categories(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, categories, _, _, _ = _comment_stats(summaries)
+    _, categories, _, _, _, _ = _comment_stats(summaries)
     return categories
+
+
+def _aggregate_fix_difficulty(
+    summaries: List[models.CommentSummary],
+) -> Dict[str, int]:
+    _, _, _, fix_difficulty, _, _ = _comment_stats(summaries)
+    return fix_difficulty
 
 
 def _aggregate_counts(
     survey_summaries: List[models.SurveySummary],
     comment_summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, _, importance, comments_count, important_from_comments = _comment_stats(
+    _, _, _, _, comments_count, important_from_comments = _comment_stats(
         comment_summaries
     )
     return {
@@ -291,7 +303,7 @@ def dashboard_overview(
     # Wait, the user manual edit Step 810 shows dashboard_per_lecture returning it.
     # dashboard_overview usually aggregates counts.
     # I will add priority to dashboard_overview return to be safe/complete.
-    _, _, priority, _, _ = _comment_stats(flat_comment_rows)
+    _, _, priority, fix_difficulty, _, _ = _comment_stats(flat_comment_rows)
 
     timeline = []
     timeline = []
@@ -319,6 +331,7 @@ def dashboard_overview(
         "sentiments": sentiments,
         "categories": categories,
         "priority": priority,
+        "fix_difficulty": fix_difficulty,
         "timeline": timeline,
     }
 
@@ -387,12 +400,13 @@ def dashboard_per_lecture(
                     "low": _comment_stats(comment_summary)[2]["low"],
                     "medium": _comment_stats(comment_summary)[2]["medium"],
                     "high": _comment_stats(comment_summary)[2]["high"],
-                    "priority_comments": _comment_stats(comment_summary)[4],
+                    "priority_comments": _comment_stats(comment_summary)[5],
                 },
+                "fix_difficulty": _comment_stats(comment_summary)[3],
                 "counts": {
                     "responses": summary.response_count if summary else 0,
-                    "comments": _comment_stats(comment_summary)[3],
-                    "important_comments": _comment_stats(comment_summary)[4],
+                    "comments": _comment_stats(comment_summary)[4],
+                    "important_comments": _comment_stats(comment_summary)[5],
                 },
             }
         )

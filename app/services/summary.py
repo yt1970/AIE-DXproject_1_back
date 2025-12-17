@@ -245,6 +245,31 @@ def _refresh_comment_summary(
                     else_=0,
                 )
             ).label("priority_high"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_fix_difficulty == "easy",
+                            rc.llm_fix_difficulty == "容易",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("fix_difficulty_easy"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_fix_difficulty == "needed",
+                            rc.llm_fix_difficulty == "hard",
+                            rc.llm_fix_difficulty == "困難",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("fix_difficulty_hard"),
         )
         .filter(*filters)
         .one()
@@ -272,6 +297,10 @@ def _refresh_comment_summary(
         "low": int(aggregates.priority_low or 0),
         "medium": int(aggregates.priority_medium or 0),
         "high": int(aggregates.priority_high or 0),
+    }
+    fix_difficulty_counts = {
+        "easy": int(aggregates.fix_difficulty_easy or 0),
+        "hard": int(aggregates.fix_difficulty_hard or 0),
     }
 
     now = datetime.now(UTC)
@@ -304,6 +333,17 @@ def _refresh_comment_summary(
                 survey_batch_id=survey_batch_id,
                 student_attribute=attr,
                 analysis_type="priority",
+                label=label,
+                count=value,
+                created_at=now,
+            )
+        )
+    for label, value in fix_difficulty_counts.items():
+        rows.append(
+            models.CommentSummary(
+                survey_batch_id=survey_batch_id,
+                student_attribute=attr,
+                analysis_type="fix_difficulty",
                 label=label,
                 count=value,
                 created_at=now,
