@@ -27,10 +27,6 @@ class CommentCategory(str, Enum):
     instructor = "instructor"
     other = "other"
 
-class Importance(str, Enum):
-    high = "high"
-    medium = "medium"
-    low = "low"
 
 class QuestionType(str, Enum):
     learned = "learned"
@@ -184,7 +180,9 @@ class CommentItem(BaseModel):
     text: str
     sentiment: Optional[Sentiment] = None
     category: Optional[CommentCategory] = None
-    importance: Optional[Importance] = None
+    priority: Optional[str] = None
+    fix_difficulty: Optional[str] = None
+    risk_level: Optional[str] = None
     question_type: QuestionType
 
 

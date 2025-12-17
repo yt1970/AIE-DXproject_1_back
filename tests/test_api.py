@@ -110,7 +110,7 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
         "score_recommend_friend": 10,
     }
 
-    def _add_comment(account_suffix: str, comment_text: str, importance: str) -> None:
+    def _add_comment(account_suffix: str, comment_text: str, priority: str) -> None:
         survey_response = models.SurveyResponse(
             survey_batch_id=batch.id,
             account_id=f"user-{account_suffix}",
@@ -127,7 +127,8 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
                 comment_text=comment_text,
                 llm_category="content",
                 llm_sentiment_type="positive",
-                llm_importance_level=importance,
+                llm_priority=priority,
+                llm_fix_difficulty="none",
                 llm_is_abusive=False,
                 is_analyzed=True,
             )
@@ -427,7 +428,7 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
     assert resp.status_code == 200
 
 
-def test_course_comments_important_only_filter(client: TestClient) -> None:
+def test_course_comments_priority_only_filter(client: TestClient) -> None:
     course_name = "Filter Course"
     db = session_module.SessionLocal()
     try:
@@ -436,24 +437,24 @@ def test_course_comments_important_only_filter(client: TestClient) -> None:
         db.close()
 
     encoded_course = quote(course_name, safe="")
-    important_resp = client.get(
+    priority_resp = client.get(
         f"/api/v1/courses/{encoded_course}/comments",
-        params={"important_only": True},
+        params={"priority_only": True},
     )
-    assert important_resp.status_code == 200
-    important_body = important_resp.json()
-    assert len(important_body) == 2
-    assert {item["llm_importance_level"] for item in important_body} == {
+    assert priority_resp.status_code == 200
+    priority_body = priority_resp.json()
+    assert len(priority_body) == 2
+    assert {item["llm_priority"] for item in priority_body} == {
         "high",
         "medium",
     }
 
     low_only_resp = client.get(
         f"/api/v1/courses/{encoded_course}/comments",
-        params={"importance": "low"},
+        params={"priority": "low"},
     )
     assert low_only_resp.status_code == 200
     low_body = low_only_resp.json()
     assert len(low_body) == 1
-    assert low_body[0]["llm_importance_level"] == "low"
+    assert low_body[0]["llm_priority"] == "low"
     assert low_body[0]["comment_text"] == "Need better slides"

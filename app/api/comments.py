@@ -12,9 +12,9 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-IMPORTANT_LEVELS = (
-    models.ImportanceType.medium.value,
-    models.ImportanceType.high.value,
+PRIORITY_LEVELS = (
+    models.PriorityType.medium.value,
+    models.PriorityType.high.value,
 )
 
 
@@ -24,14 +24,14 @@ def get_course_comments(
     limit: int = 100,
     skip: int = 0,
     version: str | None = None,
-    importance: str | None = Query(
+    priority: str | None = Query(
         default=None,
-        description="importance level to filter (low/medium/high)",
+        description="priority level to filter (low/medium/high)",
         pattern="^(low|medium|high)$",
     ),
-    important_only: bool = Query(
+    priority_only: bool = Query(
         default=False,
-        description="When true, only medium/high importance comments are returned",
+        description="When true, only medium/high priority comments are returned",
     ),
     db: Session = Depends(get_db),
 ):
@@ -54,11 +54,11 @@ def get_course_comments(
         # 実際の保存状態は SurveyBatch.batch_type で管理する。
         batch_type = "confirmed" if version == "final" else "preliminary"
         query = query.filter(models.SurveyBatch.batch_type == batch_type)
-    if importance:
-        query = query.filter(models.ResponseComment.llm_importance_level == importance)
-    elif important_only:
+    if priority:
+        query = query.filter(models.ResponseComment.llm_priority == priority)
+    elif priority_only:
         query = query.filter(
-            models.ResponseComment.llm_importance_level.in_(IMPORTANT_LEVELS)
+            models.ResponseComment.llm_priority.in_(PRIORITY_LEVELS)
         )
     comments_with_scores = (
         query.order_by(models.ResponseComment.id.desc()).offset(skip).limit(limit).all()

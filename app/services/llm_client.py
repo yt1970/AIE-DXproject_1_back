@@ -54,14 +54,11 @@ class LLMAnalysisResult(BaseModel):
     """LLM応答を正規化したモデル。"""
 
     category: Optional[str] = None
-    importance_level: Optional[str] = Field(
-        default=None, description="重要度ラベル (例: low, medium, high)"
+    priority: Optional[str] = Field(
+        default=None, description="重要度 (high, medium, low)"
     )
-    importance_score: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="0~1の重要度スコア。スコアが提供されない場合はNone。",
+    fix_difficulty: Optional[str] = Field(
+        default=None, description="修正難易度 (easy, hard, none)"
     )
     risk_level: Optional[str] = Field(
         default=None, description="危険度ラベル (例: none, low, medium, high)"
@@ -153,8 +150,8 @@ class LLMClient:
                 mock_payload = {
                     "category": "その他",
                     "sentiment": "neutral",
-                    "importance_level": "low",
-                    "importance_score": 0.1,
+                    "priority": "low",
+                    "fix_difficulty": "easy",
                     "risk_level": "none",
                     "is_safe": True,
                     "summary": comment_text[:50],
@@ -244,7 +241,13 @@ class LLMClient:
             question_text=question_text_str,
             comment_text=comment_text,
             instructions=instructions,
-        )
+        ).replace('\n', ' ').strip()
+
+        # 3. キャッシュキーの生成 (D. キャッシュキーの固定)
+        # プロンプトの固定部分の内容（BASE_PROMPT_KEY + instructions + 質問事項名）に基づきハッシュキーを生成する
+        BASE_PROMPT_KEY = "test"
+        fixed_content_string = f"{BASE_PROMPT_KEY}|{instructions}"
+        GLOBAL_FIXED_CACHE_KEY = hashlib.sha256(fixed_content_string.encode('utf-8')).hexdigest()
 
         if self.config.provider in {"openai", "azure_openai"}:
             payload: Dict[str, Any] = {
@@ -395,10 +398,12 @@ class LLMClient:
 
         # 代表的なキー差異を吸収
         key_aliases = {
-            "importance": "importance_level",
-            "importanceLevel": "importance_level",
-            "importance_label": "importance_level",
-            "priority": "importance_level",
+            "importance": "priority",
+            "importanceLevel": "priority",
+            "importance_label": "priority",
+            "priority": "priority",
+            "fix_difficulty": "fix_difficulty",
+            "fixDifficulty": "fix_difficulty",
             "danger_level": "risk_level",
             "danger": "risk_level",
             "risk": "risk_level",
@@ -410,21 +415,7 @@ class LLMClient:
             if alias in normalized and target not in normalized:
                 normalized[target] = normalized[alias]
 
-        # 文字列スコアを数値化
-        score_keys = ("importance_score", "importanceScore")
-        for key in score_keys:
-            if key in normalized:
-                try:
-                    normalized["importance_score"] = (
-                        float(normalized[key])
-                        if normalized[key] is not None
-                        else normalized.get("importance_score")
-                    )
-                except (TypeError, ValueError):
-                    warnings.append(
-                        f"importance_score could not be converted to float: {normalized[key]!r}"
-                    )
-                break
+
 
         # 真偽値をboolに統一
         if "is_safe" in normalized and not isinstance(normalized["is_safe"], bool):

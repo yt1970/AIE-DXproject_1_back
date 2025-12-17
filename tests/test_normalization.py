@@ -8,11 +8,12 @@ import pytest
 
 from app.analysis.analyzer import (
     _normalize_category,
-    _normalize_importance,
+    _normalize_fix_difficulty,
+    _normalize_priority,
     _normalize_risk_level,
     _normalize_sentiment,
 )
-from app.db.models import CategoryType, ImportanceType, RiskLevelType, SentimentType
+from app.db.models import CategoryType, FixDifficultyType, PriorityType, RiskLevelType, SentimentType
 
 
 class TestSentimentNormalization:
@@ -86,34 +87,64 @@ class TestCategoryNormalization:
         assert _normalize_category("unknown") == CategoryType.other
 
 
-class TestImportanceNormalization:
-    """重要度の正規化テスト"""
+class TestPriorityNormalization:
+    """優先度の正規化テスト"""
 
     def test_normalize_high(self):
-        """high が正しく ImportanceType.high に変換される"""
-        assert _normalize_importance("high") == ImportanceType.high
+        """high が正しく PriorityType.high に変換される"""
+        assert _normalize_priority("high") == PriorityType.high
 
     def test_normalize_medium(self):
-        """medium が正しく ImportanceType.medium に変換される"""
-        assert _normalize_importance("medium") == ImportanceType.medium
+        """medium が正しく PriorityType.medium に変換される"""
+        assert _normalize_priority("medium") == PriorityType.medium
 
     def test_normalize_low(self):
-        """low が正しく ImportanceType.low に変換される"""
-        assert _normalize_importance("low") == ImportanceType.low
+        """low が正しく PriorityType.low に変換される"""
+        assert _normalize_priority("low") == PriorityType.low
 
     def test_normalize_case_insensitive(self):
         """大文字小文字を区別せずに変換される"""
-        assert _normalize_importance("HIGH") == ImportanceType.high
-        assert _normalize_importance("Medium") == ImportanceType.medium
+        assert _normalize_priority("HIGH") == PriorityType.high
+        assert _normalize_priority("Medium") == PriorityType.medium
 
     def test_normalize_empty_string(self):
         """空文字列は None（DB 上は NULL）にフォールバックする"""
-        assert _normalize_importance("") is None
-        assert _normalize_importance(None) is None
+        assert _normalize_priority("") is None
+        assert _normalize_priority(None) is None
 
     def test_normalize_unknown_value(self):
         """未知の値は None（DB 上は NULL）にフォールバックする"""
-        assert _normalize_importance("unknown") is None
+        assert _normalize_priority("unknown") is None
+
+
+class TestFixDifficultyNormalization:
+    """修正難易度の正規化テスト"""
+
+    def test_normalize_easy(self):
+        """easy が正しく FixDifficultyType.easy に変換される"""
+        assert _normalize_fix_difficulty("easy") == FixDifficultyType.easy
+
+    def test_normalize_hard(self):
+        """hard が正しく FixDifficultyType.hard に変換される"""
+        assert _normalize_fix_difficulty("hard") == FixDifficultyType.hard
+
+    def test_normalize_none(self):
+        """none が正しく FixDifficultyType.none に変換される"""
+        assert _normalize_fix_difficulty("none") == FixDifficultyType.none
+
+    def test_normalize_case_insensitive(self):
+        """大文字小文字を区別せずに変換される"""
+        assert _normalize_fix_difficulty("EASY") == FixDifficultyType.easy
+        assert _normalize_fix_difficulty("Hard") == FixDifficultyType.hard
+
+    def test_normalize_empty_string(self):
+        """空文字列は None（DB 上は NULL）にフォールバックする"""
+        assert _normalize_fix_difficulty("") is None
+        assert _normalize_fix_difficulty(None) is None
+
+    def test_normalize_unknown_value(self):
+        """未知の値は None（DB 上は NULL）にフォールバックする"""
+        assert _normalize_fix_difficulty("unknown") is None
 
 
 class TestRiskLevelNormalization:

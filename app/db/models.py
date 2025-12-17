@@ -34,11 +34,16 @@ class SentimentType(str, enum.Enum):
     neutral = "neutral"
 
 
-class ImportanceType(str, enum.Enum):
-    """重要度のEnum。LLMがhigh/medium/low以外の値を返した場合は、DB上はNULLとして保存する。"""
+class PriorityType(str, enum.Enum):
     high = "high"
     medium = "medium"
     low = "low"
+
+
+class FixDifficultyType(str, enum.Enum):
+    easy = "easy"
+    hard = "hard"
+    none = "none"
 
 
 class RiskLevelType(str, enum.Enum):
@@ -132,7 +137,8 @@ class ResponseComment(Base):
     # LLM Analysis
     llm_sentiment_type = Column(String(20))  # positive, neutral, negative
     llm_category = Column(String(50))   # content, material, instructor, operation, other
-    llm_importance_level = Column(String(10))  # high, medium, low (NULL if LLM returns other values)
+    llm_priority = Column(String(10))  # high, medium, low
+    llm_fix_difficulty = Column(String(10))  # easy, hard, none (NULL if LLM returns other values)
     llm_is_abusive = Column(Boolean, default=False)
     is_analyzed = Column(Boolean, default=False)
 

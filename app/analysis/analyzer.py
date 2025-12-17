@@ -4,10 +4,10 @@ import logging
 from functools import lru_cache
 from typing import List, Optional
 
-from app.db.models import CategoryType, ImportanceType, RiskLevelType, SentimentType
+from app.db.models import CategoryType, PriorityType, FixDifficultyType, RiskLevelType, SentimentType
 from app.services import LLMClient, LLMClientConfig, build_default_llm_config
 
-from . import aggregation, llm_analyzer, safety, scoring
+from . import aggregation, llm_analyzer, safety
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,8 @@ class CommentAnalysisResult:
         llm_result: llm_analyzer.LLMAnalysisResult,
         risk_level_normalized: RiskLevelType,
         category_normalized: CategoryType,
-        importance_normalized: ImportanceType | None,
+        priority_normalized: PriorityType | None,
+        fix_difficulty_normalized: FixDifficultyType | None,
     ) -> None:
         # DBのCommentAnalysisモデルと対応する属性
         self.is_improvement_needed = is_improvement_needed
@@ -33,8 +34,8 @@ class CommentAnalysisResult:
         # LLM分析結果の詳細情報
         self.category_normalized = category_normalized
         self.summary = llm_result.summary
-        self.importance_normalized = importance_normalized
-        self.importance_score = llm_result.importance_score
+        self.priority_normalized = priority_normalized
+        self.fix_difficulty_normalized = fix_difficulty_normalized
         self.risk_level_normalized = risk_level_normalized
 
         # デバッグやログ用の追加情報
@@ -50,8 +51,12 @@ class CommentAnalysisResult:
         return self.category_normalized.value
 
     @property
-    def importance(self) -> str:
-        return self.importance_normalized.value if self.importance_normalized else ""
+    def priority(self) -> str:
+        return self.priority_normalized.value if self.priority_normalized else ""
+
+    @property
+    def fix_difficulty(self) -> str:
+        return self.fix_difficulty_normalized.value if self.fix_difficulty_normalized else ""
 
     @property
     def risk_level(self) -> str:
@@ -64,7 +69,8 @@ class CommentAnalysisResult:
             f"is_abusive={self.is_abusive}, "
             f"sentiment={self.sentiment_normalized.value}, "
             f"category={self.category_normalized.value}, "
-            f"importance={self.importance_normalized.value if self.importance_normalized else None}, "
+            f"priority={self.priority_normalized.value if self.priority_normalized else None}, "
+            f"fix_difficulty={self.fix_difficulty_normalized.value if self.fix_difficulty_normalized else None}, "
             f"risk_level={self.risk_level_normalized.value}"
             ")"
         )
@@ -119,8 +125,15 @@ def analyze_comment(
         )
 
     # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
-    final_importance_score = scoring.determine_importance_score(llm_structured)
-    is_improvement_needed = final_importance_score > 0.4
+    # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
+    # is_improvement_needed: PriorityがHighまたはMediumの場合にTrueとする
+    
+    priority_enum = _normalize_priority(llm_structured.priority)
+    fix_difficulty_enum = _normalize_fix_difficulty(llm_structured.fix_difficulty)
+    
+    is_improvement_needed = False
+    if priority_enum in (PriorityType.high, PriorityType.medium):
+        is_improvement_needed = True
 
     # is_abusive: 安全性チェックモジュールで誹謗中傷を判定
     is_abusive = not safety.is_comment_safe(comment_text, llm_structured)
@@ -132,28 +145,34 @@ def analyze_comment(
 
     sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
     category_enum = _normalize_category(llm_structured.category or category_guess)
-    importance_enum = _normalize_importance(llm_structured.importance_level)
+    
+    # 既存コードで既に正規化しているが、念のため再取得（あるいは変数を再利用）
+    # priority_enum, fix_difficulty_enum は上で定義済み
     risk_level_enum = _normalize_risk_level(llm_structured.risk_level)
 
     # 最終的な結果を構築
-    llm_structured.importance_score = final_importance_score
     llm_structured.risk_level = risk_level_enum.value
     llm_structured.category = category_enum.value
-    llm_structured.importance_level = (
-        importance_enum.value if importance_enum is not None else None
+    llm_structured.priority = (
+        priority_enum.value if priority_enum is not None else None
+    )
+    llm_structured.fix_difficulty = (
+        fix_difficulty_enum.value if fix_difficulty_enum is not None else None
     )
     llm_structured.sentiment = sentiment_enum.value
     llm_structured.sentiment_normalized = sentiment_enum
     llm_structured.category_normalized = category_enum
-    llm_structured.importance_normalized = importance_enum
-    llm_structured.risk_level_normalized = risk_level_enum
-
+    # llm_structured への割り当て（Pydanticモデル側には _normalized フィールドはないかもしれないが、
+    # 既存コードで代入しているので踏襲するか、Pydantic側定義にはないなら不要）
+    # ここではローカル変数として渡す
+    
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
         is_abusive=is_abusive,
         sentiment_normalized=sentiment_enum,
         category_normalized=category_enum,
-        importance_normalized=importance_enum,
+        priority_normalized=priority_enum,
+        fix_difficulty_normalized=fix_difficulty_enum,
         risk_level_normalized=risk_level_enum,
         llm_result=llm_structured,
     )
@@ -246,40 +265,61 @@ def _normalize_category(raw_value: str | None) -> CategoryType:
     return CategoryType.other
 
 
-IMPORTANCE_ALIASES = {
-    "high": ImportanceType.high,
-    "medium": ImportanceType.medium,
-    "low": ImportanceType.low,
-    "高": ImportanceType.high,
-    "中": ImportanceType.medium,
-    "低": ImportanceType.low,
-}
-
-IMPORTANCE_DISPLAY = {
-    ImportanceType.high: "high",
-    ImportanceType.medium: "medium",
-    ImportanceType.low: "low",
+PRIORITY_ALIASES = {
+    "high": PriorityType.high,
+    "medium": PriorityType.medium,
+    "low": PriorityType.low,
+    "高": PriorityType.high,
+    "中": PriorityType.medium,
+    "低": PriorityType.low,
 }
 
 
-def _normalize_importance(raw_value: str | None) -> ImportanceType | None:
-    """Map arbitrary importance labels to the Enum we persist."""
+def _normalize_priority(raw_value: str | None) -> PriorityType | None:
+    """Map arbitrary priority labels to the Enum we persist."""
     if not raw_value:
-        # 「その他」は Enum では表現せず、DB 上は NULL として扱う
         return None
 
     normalized = raw_value.strip().lower()
-    if normalized in ImportanceType.__members__:
-        return ImportanceType[normalized]
+    if normalized in PriorityType.__members__:
+        return PriorityType[normalized]
 
-    if raw_value in IMPORTANCE_ALIASES:
-        return IMPORTANCE_ALIASES[raw_value]
+    if raw_value in PRIORITY_ALIASES:
+        return PRIORITY_ALIASES[raw_value]
 
-    for key, mapped in IMPORTANCE_ALIASES.items():
+    for key, mapped in PRIORITY_ALIASES.items():
         if key.lower() == normalized:
             return mapped
 
-    # 未知の値も NULL 扱い（DB では NULL、集計では low と同等に扱う）
+    return None
+
+
+FIX_DIFFICULTY_ALIASES = {
+    "easy": FixDifficultyType.easy,
+    "hard": FixDifficultyType.hard,
+    "none": FixDifficultyType.none,
+    "簡単": FixDifficultyType.easy,
+    "難しい": FixDifficultyType.hard,
+    "なし": FixDifficultyType.none,
+}
+
+
+def _normalize_fix_difficulty(raw_value: str | None) -> FixDifficultyType | None:
+    """Map arbitrary fix_difficulty labels to the Enum we persist."""
+    if not raw_value:
+        return None
+
+    normalized = raw_value.strip().lower()
+    if normalized in FixDifficultyType.__members__:
+        return FixDifficultyType[normalized]
+
+    if raw_value in FIX_DIFFICULTY_ALIASES:
+        return FIX_DIFFICULTY_ALIASES[raw_value]
+
+    for key, mapped in FIX_DIFFICULTY_ALIASES.items():
+        if key.lower() == normalized:
+            return mapped
+
     return None
 
 

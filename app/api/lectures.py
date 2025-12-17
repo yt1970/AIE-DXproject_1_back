@@ -63,7 +63,6 @@ from app.schemas.analysis import (
     AverageScoreItem,
     CommentCategory,
     CommentItem,
-    Importance,
     QuestionType,
     RatingDistribution,
     ScoreDistributions,
@@ -179,11 +178,12 @@ def get_lecture_analysis(
             text=c.comment_text,
             sentiment=c.llm_sentiment_type,
             category=c.llm_category,
-            importance=c.llm_importance_level,
+            priority=c.llm_priority,
+            fix_difficulty=c.llm_fix_difficulty,
             question_type=c.question_type,
         )
         comment_items.append(item)
-        if c.llm_importance_level == Importance.high:
+        if c.llm_priority == "high":
             important_items.append(item)
 
     # Calculate NPS percentages

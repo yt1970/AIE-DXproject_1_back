@@ -140,9 +140,14 @@ def analyze_and_store_comments(
                     if analysis_result.sentiment_normalized
                     else None
                 ),
-                llm_importance_level=(
-                    analysis_result.importance_normalized.value
-                    if analysis_result.importance_normalized
+                llm_priority=(
+                    analysis_result.priority_normalized.value
+                    if analysis_result.priority_normalized
+                    else None
+                ),
+                llm_fix_difficulty=(
+                    analysis_result.fix_difficulty_normalized.value
+                    if analysis_result.fix_difficulty_normalized
                     else None
                 ),
                 llm_is_abusive=analysis_result.is_abusive,
