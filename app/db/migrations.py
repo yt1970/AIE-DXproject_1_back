@@ -289,9 +289,14 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     if "comment_text" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN comment_text TEXT")
 
-    if "llm_importance_level" not in existing_columns:
+    if "llm_priority" not in existing_columns:
         statements.append(
-            "ALTER TABLE comment ADD COLUMN llm_importance_level VARCHAR(20)"
+            "ALTER TABLE comment ADD COLUMN llm_priority VARCHAR(20)"
+        )
+
+    if "llm_fix_difficulty" not in existing_columns:
+        statements.append(
+            "ALTER TABLE comment ADD COLUMN llm_fix_difficulty VARCHAR(20)"
         )
 
     if "llm_importance_score" not in existing_columns:
@@ -392,10 +397,19 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
         )
     if "comment_text" not in existing_columns:
         statements.append("ALTER TABLE response_comments ADD COLUMN comment_text TEXT")
-    if "llm_importance_level" not in existing_columns:
+    if "llm_priority" not in existing_columns:
+        if "llm_importance_level" in existing_columns:
+             statements.append("ALTER TABLE response_comments RENAME COLUMN llm_importance_level TO llm_priority")
+        else:
+             statements.append(
+                "ALTER TABLE response_comments ADD COLUMN llm_priority VARCHAR(20)"
+             )
+
+    if "llm_fix_difficulty" not in existing_columns:
         statements.append(
-            "ALTER TABLE response_comments ADD COLUMN llm_importance_level VARCHAR(20)"
+            "ALTER TABLE response_comments ADD COLUMN llm_fix_difficulty VARCHAR(20)"
         )
+
     if "llm_importance_score" not in existing_columns:
         statements.append(
             "ALTER TABLE response_comments ADD COLUMN llm_importance_score FLOAT"
@@ -512,7 +526,8 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         Column("comment_text", Text, nullable=False),
         Column("llm_category", String(50)),
         Column("llm_sentiment_type", String(20)),
-        Column("llm_importance_level", String(20)),
+        Column("llm_priority", String(20)),
+        Column("llm_fix_difficulty", String(20)),
         Column("llm_is_abusive", Boolean),
         Column("is_analyzed", Boolean),
     )
@@ -533,7 +548,8 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         ).label("comment_text"),
         _safe_column(old_comment, "llm_category", existing_columns),
         _safe_column(old_comment, "llm_sentiment_type", existing_columns),
-        _safe_column(old_comment, "llm_importance_level", existing_columns),
+        _safe_column(old_comment, "llm_priority", existing_columns),
+        _safe_column(old_comment, "llm_fix_difficulty", existing_columns),
         _safe_column(old_comment, "llm_is_abusive", existing_columns),
         _safe_column(old_comment, "is_analyzed", existing_columns),
     )
@@ -552,7 +568,8 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
                     "comment_text",
                     "llm_category",
                     "llm_sentiment_type",
-                    "llm_importance_level",
+                    "llm_priority",
+                    "llm_fix_difficulty",
                     "llm_is_abusive",
                     "is_analyzed",
                 ],

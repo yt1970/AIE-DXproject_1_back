@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -406,6 +407,7 @@ class LLMClient:
             "fixDifficulty": "fix_difficulty",
             "danger_level": "risk_level",
             "danger": "risk_level",
+            "risk_assessment": "risk_level",
             "risk": "risk_level",
             "safety": "is_safe",
             "safe": "is_safe",

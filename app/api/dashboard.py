@@ -119,7 +119,8 @@ def _comment_stats(
         "operations": 0,
         "other": 0,
     }
-    importance = {"low": 0, "medium": 0, "high": 0}
+    priority = {"low": 0, "medium": 0, "high": 0}
+    fix_difficulty = {"easy": 0, "hard": 0}
 
     for row in rows:
         if row.analysis_type == "sentiment" and row.label in sentiments:
@@ -134,16 +135,20 @@ def _comment_stats(
             mapped = key_map.get(row.label)
             if mapped and mapped in categories:
                 categories[mapped] += int(row.count or 0)
-        elif row.analysis_type == "importance" and row.label in importance:
-            importance[row.label] += int(row.count or 0)
+        elif row.analysis_type == "priority" and row.label in priority:
+            priority[row.label] += int(row.count or 0)
+        elif row.analysis_type == "fix_difficulty" and row.label in fix_difficulty:
+            fix_difficulty[row.label] += int(row.count or 0)
 
     comments_count = max(
         sum(sentiments.values()),
         sum(categories.values()),
-        sum(importance.values()),
+        sum(priority.values()),
+        sum(fix_difficulty.values()),
     )
-    important_count = importance["medium"] + importance["high"]
-    return sentiments, categories, importance, comments_count, important_count
+    # important_count is now priority_high + priority_medium
+    important_count = priority["medium"] + priority["high"]
+    return sentiments, categories, priority, fix_difficulty, comments_count, important_count
 
 
 def _aggregate_sentiments(
@@ -156,8 +161,15 @@ def _aggregate_sentiments(
 def _aggregate_categories(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, categories, _, _, _ = _comment_stats(summaries)
+    _, categories, _, _, _, _ = _comment_stats(summaries)
     return categories
+
+
+def _aggregate_fix_difficulty(
+    summaries: List[models.CommentSummary],
+) -> Dict[str, int]:
+    _, _, _, fix_difficulty, _, _ = _comment_stats(summaries)
+    return fix_difficulty
 
 
 def _aggregate_counts(
@@ -285,6 +297,7 @@ def dashboard_overview(
     counts = _aggregate_counts(survey_summaries, flat_comment_rows)
     sentiments = _aggregate_sentiments(flat_comment_rows)
     categories = _aggregate_categories(flat_comment_rows)
+    fix_difficulty = _aggregate_fix_difficulty(flat_comment_rows)
 
     timeline = []
     timeline = []
@@ -311,6 +324,7 @@ def dashboard_overview(
         "counts": counts,
         "sentiments": sentiments,
         "categories": categories,
+        "fix_difficulty": fix_difficulty,
         "timeline": timeline,
     }
 
@@ -375,16 +389,20 @@ def dashboard_per_lecture(
                 },
                 "sentiments": _aggregate_sentiments(comment_summary),
                 "categories": _aggregate_categories(comment_summary),
-                "importance": {
+                "priority": {
                     "low": _comment_stats(comment_summary)[2]["low"],
                     "medium": _comment_stats(comment_summary)[2]["medium"],
                     "high": _comment_stats(comment_summary)[2]["high"],
-                    "important_comments": _comment_stats(comment_summary)[4],
+                    "priority_comments": _comment_stats(comment_summary)[5],
+                },
+                "fix_difficulty": {
+                     "easy": _comment_stats(comment_summary)[3]["easy"],
+                     "hard": _comment_stats(comment_summary)[3]["hard"],
                 },
                 "counts": {
                     "responses": summary.response_count if summary else 0,
-                    "comments": _comment_stats(comment_summary)[3],
-                    "important_comments": _comment_stats(comment_summary)[4],
+                    "comments": _comment_stats(comment_summary)[4],
+                    "important_comments": _comment_stats(comment_summary)[5],
                 },
             }
         )

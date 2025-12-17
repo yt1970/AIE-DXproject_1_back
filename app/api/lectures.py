@@ -123,7 +123,8 @@ def get_lecture_analysis(
                 question_handling=[], speaking_style=[], preparation=[],
                 motivation=[], future_application=[]
             ),
-            important_comments=[],
+            fix_difficulty={},
+            priority_comments=[],
             comments=[]
         )
 
@@ -168,7 +169,7 @@ def get_lecture_analysis(
     raw_comments = q_comments.all()
     
     comment_items = []
-    important_items = []
+    priority_items = []
     
     for c, r in raw_comments:
 
@@ -184,7 +185,15 @@ def get_lecture_analysis(
         )
         comment_items.append(item)
         if c.llm_priority == "high":
-            important_items.append(item)
+            priority_items.append(item)
+
+    # Calculate Fix Difficulty Counts
+    fix_difficulty_counts = {"easy": 0, "hard": 0}
+    for item in comment_items:
+        if item.fix_difficulty == "easy" or item.fix_difficulty == "容易":
+             fix_difficulty_counts["easy"] += 1
+        elif item.fix_difficulty == "needed" or item.fix_difficulty == "hard" or item.fix_difficulty == "困難":
+             fix_difficulty_counts["hard"] += 1
 
     # Calculate NPS percentages
     total_nps_responses = summary.response_count if summary else 0
@@ -242,6 +251,7 @@ def get_lecture_analysis(
             motivation=dist_map.get("score_self_motivation", []),
             future_application=dist_map.get("score_self_future", [])
         ),
-        important_comments=important_items,
+        fix_difficulty=fix_difficulty_counts,
+        priority_comments=priority_items,
         comments=comment_items
     )

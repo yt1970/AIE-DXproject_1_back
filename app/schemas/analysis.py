@@ -191,5 +191,6 @@ class SessionAnalysisResponse(BaseModel):
     nps: SessionNPS
     average_scores: List[AverageScoreItem]
     score_distributions: ScoreDistributions
-    important_comments: List[CommentItem]
+    fix_difficulty: Dict[str, int]
+    priority_comments: List[CommentItem]
     comments: List[CommentItem]
