@@ -120,7 +120,6 @@ def _comment_stats(
         "other": 0,
     }
     priority = {"low": 0, "medium": 0, "high": 0}
-    fix_difficulty = {"easy": 0, "hard": 0}
 
     for row in rows:
         if row.analysis_type == "sentiment" and row.label in sentiments:
@@ -137,18 +136,15 @@ def _comment_stats(
                 categories[mapped] += int(row.count or 0)
         elif row.analysis_type == "priority" and row.label in priority:
             priority[row.label] += int(row.count or 0)
-        elif row.analysis_type == "fix_difficulty" and row.label in fix_difficulty:
-            fix_difficulty[row.label] += int(row.count or 0)
 
     comments_count = max(
         sum(sentiments.values()),
         sum(categories.values()),
         sum(priority.values()),
-        sum(fix_difficulty.values()),
     )
     # important_count is now priority_high + priority_medium
     important_count = priority["medium"] + priority["high"]
-    return sentiments, categories, priority, fix_difficulty, comments_count, important_count
+    return sentiments, categories, priority, comments_count, important_count
 
 
 def _aggregate_sentiments(
@@ -161,15 +157,8 @@ def _aggregate_sentiments(
 def _aggregate_categories(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, categories, _, _, _, _ = _comment_stats(summaries)
+    _, categories, _, _, _ = _comment_stats(summaries)
     return categories
-
-
-def _aggregate_fix_difficulty(
-    summaries: List[models.CommentSummary],
-) -> Dict[str, int]:
-    _, _, _, fix_difficulty, _, _ = _comment_stats(summaries)
-    return fix_difficulty
 
 
 def _aggregate_counts(
@@ -297,7 +286,12 @@ def dashboard_overview(
     counts = _aggregate_counts(survey_summaries, flat_comment_rows)
     sentiments = _aggregate_sentiments(flat_comment_rows)
     categories = _aggregate_categories(flat_comment_rows)
-    fix_difficulty = _aggregate_fix_difficulty(flat_comment_rows)
+    # Add priority aggregation here if needed for overview, usually overview returns it inside 'counts' or similar?
+    # But dashboard_overview return dict has no 'priority' key in original code?
+    # Wait, the user manual edit Step 810 shows dashboard_per_lecture returning it.
+    # dashboard_overview usually aggregates counts.
+    # I will add priority to dashboard_overview return to be safe/complete.
+    _, _, priority, _, _ = _comment_stats(flat_comment_rows)
 
     timeline = []
     timeline = []
@@ -324,7 +318,7 @@ def dashboard_overview(
         "counts": counts,
         "sentiments": sentiments,
         "categories": categories,
-        "fix_difficulty": fix_difficulty,
+        "priority": priority,
         "timeline": timeline,
     }
 
@@ -393,16 +387,12 @@ def dashboard_per_lecture(
                     "low": _comment_stats(comment_summary)[2]["low"],
                     "medium": _comment_stats(comment_summary)[2]["medium"],
                     "high": _comment_stats(comment_summary)[2]["high"],
-                    "priority_comments": _comment_stats(comment_summary)[5],
-                },
-                "fix_difficulty": {
-                     "easy": _comment_stats(comment_summary)[3]["easy"],
-                     "hard": _comment_stats(comment_summary)[3]["hard"],
+                    "priority_comments": _comment_stats(comment_summary)[4],
                 },
                 "counts": {
                     "responses": summary.response_count if summary else 0,
-                    "comments": _comment_stats(comment_summary)[4],
-                    "important_comments": _comment_stats(comment_summary)[5],
+                    "comments": _comment_stats(comment_summary)[3],
+                    "important_comments": _comment_stats(comment_summary)[4],
                 },
             }
         )

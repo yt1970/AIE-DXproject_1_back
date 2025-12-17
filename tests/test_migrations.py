@@ -29,7 +29,8 @@ def test_apply_migrations_adds_missing_columns() -> None:
     table_name = _target_comment_table(inspector)
     columns = {column["name"] for column in inspector.get_columns(table_name)}
 
-    assert {"llm_importance_level", "llm_importance_score", "llm_risk_level"} <= columns
+    # llm_importance_level is renamed to llm_priority
+    assert {"llm_priority", "llm_importance_score", "llm_risk_level", "llm_fix_difficulty"} <= columns
 
 
 def test_apply_migrations_is_idempotent() -> None:
@@ -51,6 +52,9 @@ def test_apply_migrations_is_idempotent() -> None:
     inspector = inspect(engine)
     table_name = _target_comment_table(inspector)
     columns = [column["name"] for column in inspector.get_columns(table_name)]
-    assert columns.count("llm_importance_level") == 1
+    # Migration renames llm_importance_level to llm_priority
+    assert columns.count("llm_importance_level") == 0
+    assert columns.count("llm_priority") == 1
+    assert columns.count("llm_fix_difficulty") == 1
     assert columns.count("llm_importance_score") == 1
     assert columns.count("llm_risk_level") == 1
