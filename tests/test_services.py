@@ -93,7 +93,6 @@ def test_llm_client_requires_comment_text() -> None:
     "analysis_type,expected",
     [
         ("sentiment", {"sentiment": "neutral"}),
-        ("importance", {"importance_level": "low", "importance_score": 0.1}),
         ("categorization", {"category": "その他"}),
         ("risk_assessment", {"risk_level": "none", "is_safe": True}),
         ("full_analysis", {"summary": "mock"}),
@@ -119,8 +118,8 @@ def test_llm_client_openai_payload(monkeypatch: pytest.MonkeyPatch) -> None:
                     "content": json.dumps(
                         {
                             "category": "講義内容",
-                            "importance_level": "high",
-                            "importance_score": 0.85,
+                            "priority": "high",
+                            "fix_difficulty": "none",
                             "risk_level": "low",
                             "sentiment": "positive",
                             "summary": "短い要約",
@@ -148,8 +147,8 @@ def test_llm_client_openai_payload(monkeypatch: pytest.MonkeyPatch) -> None:
     result = client.analyze_comment("素晴らしい講義でした。")
 
     assert result.category == "講義内容"
-    assert result.importance_level == "high"
-    assert result.importance_score == 0.85
+    assert result.priority == "high"
+    assert result.fix_difficulty == "none"
     assert result.risk_level == "low"
     assert result.sentiment == "positive"
     assert result.summary == "短い要約"
@@ -235,38 +234,38 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     batch = _create_base_entities(db_session)
 
     responses = [
-            models.SurveyResponse(
-                survey_batch_id=batch.id,
-                account_id=f"user-{idx}",
-                score_satisfaction_overall=score,
-                score_content_volume=score,
-                score_content_understanding=score,
-                score_content_announcement=score,
-                score_instructor_overall=score,
-                score_instructor_time=score,
-                score_instructor_qa=score,
-                score_instructor_speaking=score,
-                score_self_preparation=score,
-                score_self_motivation=score,
-                score_self_future=score,
-                score_recommend_friend=score + 5,
-                student_attribute="ALL",
-            )
-            for idx, score in enumerate([3, 4, 5], start=1)
-        ]
+        models.SurveyResponse(
+            survey_batch_id=batch.id,
+            account_id=f"user-{idx}",
+            score_satisfaction_overall=score,
+            score_content_volume=score,
+            score_content_understanding=score,
+            score_content_announcement=score,
+            score_instructor_overall=score,
+            score_instructor_time=score,
+            score_instructor_qa=score,
+            score_instructor_speaking=score,
+            score_self_preparation=score,
+            score_self_motivation=score,
+            score_self_future=score,
+            score_recommend_friend=score + 5,
+            student_attribute="ALL",
+        )
+        for idx, score in enumerate([3, 4, 5], start=1)
+    ]
     db_session.add_all(responses)
     db_session.flush()
 
     comments = [
-            models.ResponseComment(
-                response_id=responses[idx].id,
-                question_type="free_comment",
-                comment_text=f"comment {idx}",
-                llm_sentiment_type=sentiment,
-                llm_category=category,
-                llm_importance_level=importance,
-            )
-        for idx, (sentiment, category, importance) in enumerate(
+        models.ResponseComment(
+            response_id=responses[idx].id,
+            question_type="free_comment",
+            comment_text=f"comment {idx}",
+            llm_sentiment_type=sentiment,
+            llm_category=category,
+            llm_priority=priority,
+        )
+        for idx, (sentiment, category, priority) in enumerate(
             [
                 ("positive", "講義内容", "medium"),
                 ("negative", "講義資料", "high"),
@@ -283,11 +282,12 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     )
 
     assert survey_summary.response_count == 3
-    # NOTE: comments_count and important_comments_count removed from model
+    # NOTE: comments_count and priority_comments_count removed from model
     assert comment_counts["comments_count"] == 3
-    assert comment_counts["important_comments_count"] == 2
+    assert comment_counts["priority_comments_count"] == 2
 
     rows = db_session.query(models.CommentSummary).all()
+
     def _find(analysis_type: str, label: str) -> int:
         for r in rows:
             if r.analysis_type == analysis_type and r.label == label:
@@ -297,7 +297,7 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     assert _find("sentiment", "positive") == 1
     assert _find("sentiment", "negative") == 1
     assert _find("category", "content") == 1
-    assert _find("importance", "high") == 1
+    assert _find("priority", "high") == 1
 
 
 # ---------------------------------------------------------------------------
@@ -309,12 +309,13 @@ class _DummyEnum:
 
 
 class _DummyAnalysis:
-    def __init__(self, *, sentiment_value: str, importance_level: str) -> None:
+    def __init__(self, *, sentiment_value: str, priority: str) -> None:
         self.category_normalized = _DummyEnum("content")
         self.summary = "要約"
-        self.importance_level = importance_level
-        self.importance_normalized = _DummyEnum(importance_level)
-        self.importance_score = 0.8
+        self.priority = priority
+        self.priority_normalized = _DummyEnum(priority)
+        self.fix_difficulty = "none"
+        self.fix_difficulty_normalized = _DummyEnum("none")
         self.risk_level_normalized = _DummyEnum("low")
         self.sentiment_normalized = _DummyEnum(sentiment_value)
         self.is_abusive = False
@@ -362,9 +363,9 @@ def test_analyze_and_store_comments(
         comment_text: str, *, skip_llm_analysis: bool, **kwargs: Any
     ):
         calls.append(skip_llm_analysis)
-        importance = "low" if skip_llm_analysis else "high"
+        priority = "low" if skip_llm_analysis else "high"
         sentiment = "neutral" if skip_llm_analysis else "positive"
-        return _DummyAnalysis(sentiment_value=sentiment, importance_level=importance)
+        return _DummyAnalysis(sentiment_value=sentiment, priority=priority)
 
     monkeypatch.setattr(upload_pipeline, "analyze_comment", _fake_analyze_comment)
 
@@ -393,8 +394,8 @@ def test_analyze_and_store_comments(
 
     stored_comments = db_session.query(models.ResponseComment).all()
     assert len(stored_comments) == 3
-    assert any(comment.llm_importance_level == "low" for comment in stored_comments)
-    assert any(comment.llm_importance_level == "high" for comment in stored_comments)
+    assert any(comment.llm_priority == "low" for comment in stored_comments)
+    assert any(comment.llm_priority == "high" for comment in stored_comments)
 
     # （任意）列のみLLM分析対象、必須列はスキップされる
     assert calls.count(False) == 1

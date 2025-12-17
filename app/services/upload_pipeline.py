@@ -48,7 +48,6 @@ def analyze_and_store_comments(
 
     reader, analyzable_columns = _prepare_data_reader(content_bytes, filename=filename)
 
-
     total_comments = 0
     processed_comments = 0
     total_responses = 0
@@ -81,9 +80,7 @@ def analyze_and_store_comments(
         )
 
         if debug_logs_enabled:
-            logger.debug(
-                "Extracted account_id: %s", account_id
-            )
+            logger.debug("Extracted account_id: %s", account_id)
 
         # 数値評価を1行1件でSurveyResponseに保存
         survey_response_data = {
@@ -94,7 +91,6 @@ def analyze_and_store_comments(
         for col_name, attr_name in score_column_map.items():
             if col_name in row and row[col_name] and row[col_name].isdigit():
                 survey_response_data[attr_name] = int(row[col_name])
-
 
         # score_recommend_friendをそのまま保持
 
@@ -140,9 +136,14 @@ def analyze_and_store_comments(
                     if analysis_result.sentiment_normalized
                     else None
                 ),
-                llm_importance_level=(
-                    analysis_result.importance_normalized.value
-                    if analysis_result.importance_normalized
+                llm_priority=(
+                    analysis_result.priority_normalized.value
+                    if analysis_result.priority_normalized
+                    else None
+                ),
+                llm_fix_difficulty=(
+                    analysis_result.fix_difficulty_normalized.value
+                    if analysis_result.fix_difficulty_normalized
                     else None
                 ),
                 llm_is_abusive=analysis_result.is_abusive,
@@ -180,40 +181,52 @@ def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) ->
     return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))
 
 
-def _prepare_data_reader(content_bytes: bytes, filename: str | None = None, *, for_validation_only: bool = False):
+def _prepare_data_reader(
+    content_bytes: bytes,
+    filename: str | None = None,
+    *,
+    for_validation_only: bool = False,
+):
     """
     Prepare a reader (list of dicts) from CSV or Excel content.
     """
-    is_excel = filename and (filename.lower().endswith('.xlsx') or filename.lower().endswith('.xls'))
-    
+    is_excel = filename and (
+        filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls")
+    )
+
     if is_excel:
         try:
             import openpyxl
+
             wb = openpyxl.load_workbook(io.BytesIO(content_bytes), data_only=True)
             sheet = wb.active
             rows = list(sheet.iter_rows(values_only=True))
             if not rows:
                 raise CsvValidationError("Uploaded Excel file is empty.")
-            
+
             header_row = rows[0]
             data_rows = rows[1:]
-            
+
             # Normalize headers
-            normalized_fieldnames = [str(h).strip() if h is not None else "" for h in header_row]
-            
+            normalized_fieldnames = [
+                str(h).strip() if h is not None else "" for h in header_row
+            ]
+
             # Create list of dicts
             reader = []
             for row in data_rows:
                 # Pad row with None if shorter than header
-                padded_row = list(row) + [None] * (len(normalized_fieldnames) - len(row))
+                padded_row = list(row) + [None] * (
+                    len(normalized_fieldnames) - len(row)
+                )
                 item = {k: v for k, v in zip(normalized_fieldnames, padded_row)}
                 reader.append(item)
-                
+
         except ImportError:
             raise CsvValidationError("openpyxl is required for Excel files.")
         except Exception as exc:
             raise CsvValidationError(f"Failed to parse Excel file: {exc}") from exc
-            
+
     else:
         # CSV handling
         try:
@@ -229,10 +242,10 @@ def _prepare_data_reader(content_bytes: bytes, filename: str | None = None, *, f
 
         if not csv_reader.fieldnames:
             raise CsvValidationError("CSV header row is missing.")
-            
+
         normalized_fieldnames = [header.strip() for header in csv_reader.fieldnames]
         csv_reader.fieldnames = normalized_fieldnames
-        reader = list(csv_reader) # Convert to list to unify interface
+        reader = list(csv_reader)  # Convert to list to unify interface
 
     if any(not header for header in normalized_fieldnames):
         raise CsvValidationError("Header contains an empty column name.")
@@ -310,7 +323,7 @@ def _map_column_to_question_type(column_name: str) -> QuestionType:
     for prefix in COMMENT_SAVE_TARGET_PREFIXES:
         name = name.replace(prefix, "")
     name = name.strip()
-    
+
     if "学んだこと" in name or "学び" in name:
         return QuestionType.learned
     if "良かった点" in name or "良い点" in name:
@@ -321,5 +334,5 @@ def _map_column_to_question_type(column_name: str) -> QuestionType:
         return QuestionType.instructor_feedback
     if "要望" in name:
         return QuestionType.future_requests
-    
+
     return QuestionType.free_comment

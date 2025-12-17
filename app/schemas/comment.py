@@ -30,9 +30,11 @@ class JobResult(BaseModel):
     batch_id: int
     response_count: int
 
+
 class JobError(BaseModel):
     code: str
     message: str
+
 
 class JobStatusResponse(BaseModel):
     job_id: str
@@ -48,15 +50,22 @@ class CommentAnalysisSchema(BaseModel):
 
     # ユーザー情報をCommentモデルから直接取得する
     question_type: Optional[str] = None
+    priority: Optional[str] = Field(default=None, validation_alias="llm_priority")
+    fix_difficulty: Optional[str] = Field(
+        default=None, validation_alias="llm_fix_difficulty"
+    )
     comment_text: str
 
     llm_category: Optional[str] = None
     llm_sentiment_type: Optional[str] = None
-    llm_importance_level: Optional[str] = None
+    llm_priority: Optional[str] = None
+    # llm_fix_difficulty is already aliased above but we can keep explicit field too or just rely on above
+    # response model usually uses the field name.
+    # If I want `priority` in JSON, I should name field `priority`.
+    llm_fix_difficulty: Optional[str] = None
     llm_is_abusive: Optional[bool] = None
     is_analyzed: Optional[bool] = None
 
-    # @computed_fieldを使って、ネストされたリレーションから値を取得する
     @computed_field
     @property
     def score_satisfaction_overall(self) -> Optional[int]:
@@ -112,6 +121,7 @@ class BatchSearchItem(BaseModel):
     lecture_date: date
     batch_type: str
     uploaded_at: datetime
+
 
 class BatchSearchResponse(BaseModel):
     batches: list[BatchSearchItem]

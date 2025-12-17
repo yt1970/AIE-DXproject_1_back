@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 
-IMPORTANT_LEVELS = ("medium", "high")
+PRIORITY_LEVELS = ("medium", "high")
 
 
 def compute_and_upsert_summaries(
@@ -115,7 +115,7 @@ def _populate_survey_summary(
     # Note: nps_total removed from model, value is tracked via response_count
 
     # コメント関連のカウントは後でコメントサマリーから反映して整合を取る
-    # Note: comments_count and important_comments_count were removed from model
+    # Note: comments_count and priority_comments_count were removed from model
 
 
 def _refresh_comment_summary(
@@ -144,7 +144,10 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment_type == "positive", rc.llm_sentiment_type == "ポジティブ"),
+                        or_(
+                            rc.llm_sentiment_type == "positive",
+                            rc.llm_sentiment_type == "ポジティブ",
+                        ),
                         1,
                     ),
                     else_=0,
@@ -153,7 +156,10 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment_type == "negative", rc.llm_sentiment_type == "ネガティブ"),
+                        or_(
+                            rc.llm_sentiment_type == "negative",
+                            rc.llm_sentiment_type == "ネガティブ",
+                        ),
                         1,
                     ),
                     else_=0,
@@ -212,39 +218,64 @@ def _refresh_comment_summary(
                 case(
                     (
                         or_(
-                            rc.llm_importance_level == "low",
-                            rc.llm_importance_level == "低",
-                            rc.llm_importance_level.is_(None),
+                            rc.llm_priority == "low",
+                            rc.llm_priority == "低",
+                            rc.llm_priority.is_(None),
                         ),
                         1,
                     ),
                     else_=0,
                 )
-            ).label("importance_low"),
+            ).label("priority_low"),
             func.sum(
                 case(
                     (
                         or_(
-                            rc.llm_importance_level == "medium",
-                            rc.llm_importance_level == "中",
+                            rc.llm_priority == "medium",
+                            rc.llm_priority == "中",
                         ),
                         1,
                     ),
                     else_=0,
                 )
-            ).label("importance_medium"),
+            ).label("priority_medium"),
             func.sum(
                 case(
                     (
                         or_(
-                            rc.llm_importance_level == "high",
-                            rc.llm_importance_level == "高",
+                            rc.llm_priority == "high",
+                            rc.llm_priority == "高",
                         ),
                         1,
                     ),
                     else_=0,
                 )
-            ).label("importance_high"),
+            ).label("priority_high"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_fix_difficulty == "easy",
+                            rc.llm_fix_difficulty == "容易",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("fix_difficulty_easy"),
+            func.sum(
+                case(
+                    (
+                        or_(
+                            rc.llm_fix_difficulty == "needed",
+                            rc.llm_fix_difficulty == "hard",
+                            rc.llm_fix_difficulty == "困難",
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("fix_difficulty_hard"),
         )
         .filter(*filters)
         .one()
@@ -268,10 +299,14 @@ def _refresh_comment_summary(
         - category_counts["operations"],
         0,
     )
-    importance_counts = {
-        "low": int(aggregates.importance_low or 0),
-        "medium": int(aggregates.importance_medium or 0),
-        "high": int(aggregates.importance_high or 0),
+    priority_counts = {
+        "low": int(aggregates.priority_low or 0),
+        "medium": int(aggregates.priority_medium or 0),
+        "high": int(aggregates.priority_high or 0),
+    }
+    fix_difficulty_counts = {
+        "easy": int(aggregates.fix_difficulty_easy or 0),
+        "hard": int(aggregates.fix_difficulty_hard or 0),
     }
 
     now = datetime.now(UTC)
@@ -298,12 +333,23 @@ def _refresh_comment_summary(
                 created_at=now,
             )
         )
-    for label, value in importance_counts.items():
+    for label, value in priority_counts.items():
         rows.append(
             models.CommentSummary(
                 survey_batch_id=survey_batch_id,
                 student_attribute=attr,
-                analysis_type="importance",
+                analysis_type="priority",
+                label=label,
+                count=value,
+                created_at=now,
+            )
+        )
+    for label, value in fix_difficulty_counts.items():
+        rows.append(
+            models.CommentSummary(
+                survey_batch_id=survey_batch_id,
+                student_attribute=attr,
+                analysis_type="fix_difficulty",
                 label=label,
                 count=value,
                 created_at=now,
@@ -313,8 +359,7 @@ def _refresh_comment_summary(
     db.add_all(rows)
     return {
         "comments_count": total_comments,
-        "important_comments_count": importance_counts["medium"]
-        + importance_counts["high"],
+        "priority_comments_count": priority_counts["medium"] + priority_counts["high"],
     }
 
 
@@ -379,6 +424,8 @@ def _populate_score_distributions(
                     count=int(row.count),
                 )
             )
+
+
 def _nps_breakdown_from_scores(
     scores: list[int | float],
     *,

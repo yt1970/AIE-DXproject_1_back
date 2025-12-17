@@ -56,11 +56,13 @@ class CourseDetailResponse(BaseModel):
 
 # --- Legacy / Internal Schemas (Keep if needed for other parts, or refactor later) ---
 
+
 class LectureCategory(str, Enum):
     講義内容 = "講義内容"
     講義資料 = "講義資料"
     運営 = "運営"
     その他 = "その他"
+
 
 class LectureCreate(BaseModel):
     course_name: str
@@ -68,11 +70,13 @@ class LectureCreate(BaseModel):
     period: str
     category: Optional[LectureCategory] = None
 
+
 class LectureUpdate(BaseModel):
     course_name: Optional[str] = None
     academic_year: Optional[int] = None
     period: Optional[str] = None
     category: Optional[LectureCategory] = None
+
 
 class ScoreDistributionSchema(BaseModel):
     question_key: str
@@ -80,6 +84,7 @@ class ScoreDistributionSchema(BaseModel):
     count: int
     student_attribute: str
     model_config = ConfigDict(from_attributes=True)
+
 
 class LectureSummaryResponse(BaseModel):
     id: int
@@ -92,6 +97,7 @@ class LectureSummaryResponse(BaseModel):
     instructor_name: Optional[str] = None
     lecture_on: Optional[date] = None
     model_config = ConfigDict(from_attributes=True)
+
 
 class LectureDetailResponse(LectureSummaryResponse):
     description: Optional[str] = None

@@ -8,11 +8,18 @@ sys.path.insert(0, "/app")
 
 from app.analysis.analyzer import (
     _normalize_category,
-    _normalize_importance,
+    _normalize_fix_difficulty,
+    _normalize_priority,
     _normalize_risk_level,
     _normalize_sentiment,
 )
-from app.db.models import CategoryType, ImportanceType, RiskLevelType, SentimentType
+from app.db.models import (
+    CategoryType,
+    FixDifficultyType,
+    PriorityType,
+    RiskLevelType,
+    SentimentType,
+)
 
 
 def test_sentiment_normalization():
@@ -74,28 +81,50 @@ def test_category_normalization():
     print("✅ All category normalization tests passed!")
 
 
-def test_importance_normalization():
-    """重要度の正規化テスト"""
-    print("Testing importance normalization...")
+def test_priority_normalization():
+    """優先度の正規化テスト"""
+    print("Testing priority normalization...")
 
-    assert _normalize_importance("high") == ImportanceType.high, "high failed"
+    assert _normalize_priority("high") == PriorityType.high, "high failed"
+    assert _normalize_priority("HIGH") == PriorityType.high, "HIGH (uppercase) failed"
+    assert _normalize_priority("medium") == PriorityType.medium, "medium failed"
     assert (
-        _normalize_importance("HIGH") == ImportanceType.high
-    ), "HIGH (uppercase) failed"
-    assert _normalize_importance("medium") == ImportanceType.medium, "medium failed"
-    assert (
-        _normalize_importance("Medium") == ImportanceType.medium
+        _normalize_priority("Medium") == PriorityType.medium
     ), "Medium (mixed case) failed"
-    assert _normalize_importance("low") == ImportanceType.low, "low failed"
+    assert _normalize_priority("low") == PriorityType.low, "low failed"
 
     # Empty/None -> None (DB 上は NULL として扱う)
-    assert _normalize_importance("") is None, "empty string failed"
-    assert _normalize_importance(None) is None, "None failed"
+    assert _normalize_priority("") is None, "empty string failed"
+    assert _normalize_priority(None) is None, "None failed"
 
     # Unknown -> None
-    assert _normalize_importance("unknown") is None, "unknown value failed"
+    assert _normalize_priority("unknown") is None, "unknown value failed"
 
-    print("✅ All importance normalization tests passed!")
+    print("✅ All priority normalization tests passed!")
+
+
+def test_fix_difficulty_normalization():
+    """修正難易度の正規化テスト"""
+    print("Testing fix_difficulty normalization...")
+
+    assert _normalize_fix_difficulty("easy") == FixDifficultyType.easy, "easy failed"
+    assert (
+        _normalize_fix_difficulty("EASY") == FixDifficultyType.easy
+    ), "EASY (uppercase) failed"
+    assert _normalize_fix_difficulty("hard") == FixDifficultyType.hard, "hard failed"
+    assert (
+        _normalize_fix_difficulty("Hard") == FixDifficultyType.hard
+    ), "Hard (mixed case) failed"
+    assert _normalize_fix_difficulty("none") == FixDifficultyType.none, "none failed"
+
+    # Empty/None -> None (DB 上は NULL として扱う)
+    assert _normalize_fix_difficulty("") is None, "empty string failed"
+    assert _normalize_fix_difficulty(None) is None, "None failed"
+
+    # Unknown -> None
+    assert _normalize_fix_difficulty("unknown") is None, "unknown value failed"
+
+    print("✅ All fix_difficulty normalization tests passed!")
 
 
 def test_risk_level_normalization():
@@ -127,7 +156,8 @@ if __name__ == "__main__":
     try:
         test_sentiment_normalization()
         test_category_normalization()
-        test_importance_normalization()
+        test_priority_normalization()
+        test_fix_difficulty_normalization()
         test_risk_level_normalization()
 
         print("\n" + "=" * 50)

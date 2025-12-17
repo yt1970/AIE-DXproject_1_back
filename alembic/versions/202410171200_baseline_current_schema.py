@@ -31,8 +31,18 @@ def upgrade() -> None:
         sa.Column("lecture_date", sa.Date(), nullable=True),
         sa.Column("instructor_name", sa.String(length=255), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
-        sa.Column("updated_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=True,
+        ),
+        sa.Column(
+            "updated_at",
+            sa.TIMESTAMP(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=True,
+        ),
         sa.Column("category", sa.String(length=20), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
@@ -89,7 +99,12 @@ def upgrade() -> None:
         sa.Column("lecture_number", sa.Integer(), nullable=False),
         sa.Column("academic_year", sa.String(length=10), nullable=True),
         sa.Column("period", sa.String(length=100), nullable=True),
-        sa.Column("batch_type", sa.String(length=20), nullable=False, server_default="preliminary"),
+        sa.Column(
+            "batch_type",
+            sa.String(length=20),
+            nullable=False,
+            server_default="preliminary",
+        ),
         sa.Column("zoom_participants", sa.Integer(), nullable=True),
         sa.Column("recording_views", sa.Integer(), nullable=True),
         sa.Column("status", sa.String(length=20), nullable=False),
@@ -235,7 +250,12 @@ def upgrade() -> None:
         sa.Column("score_self_motivation", sa.Float(), nullable=True),
         sa.Column("score_self_future", sa.Float(), nullable=True),
         sa.Column("student_attribute", sa.String(length=50), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=True,
+        ),
         sa.Column("nps_score", sa.Float(), nullable=True),
         sa.Column("nps_promoters", sa.Integer(), nullable=True),
         sa.Column("nps_passives", sa.Integer(), nullable=True),
@@ -265,11 +285,21 @@ def upgrade() -> None:
             nullable=False,
             server_default="preliminary",
         ),
-        sa.Column("student_attribute", sa.String(length=50), nullable=False, server_default="ALL"),
+        sa.Column(
+            "student_attribute",
+            sa.String(length=50),
+            nullable=False,
+            server_default="ALL",
+        ),
         sa.Column("analysis_type", sa.String(length=20), nullable=False),
         sa.Column("label", sa.String(length=50), nullable=False),
         sa.Column("count", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.TIMESTAMP(), server_default=sa.text("CURRENT_TIMESTAMP"), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.TIMESTAMP(),
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+            nullable=True,
+        ),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(["survey_batch_id"], ["survey_batches.id"]),
         sa.UniqueConstraint(
@@ -307,7 +337,9 @@ def downgrade() -> None:
     op.drop_table("score_distributions")
     op.drop_table("survey_summaries")
     op.drop_table("lecture_metrics")
-    op.drop_index(op.f("ix_response_comments_account_id"), table_name="response_comments")
+    op.drop_index(
+        op.f("ix_response_comments_account_id"), table_name="response_comments"
+    )
     op.drop_index(
         op.f("ix_response_comments_survey_batch_id"), table_name="response_comments"
     )

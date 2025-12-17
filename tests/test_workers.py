@@ -132,7 +132,9 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     summary_mock = MagicMock()
     monkeypatch.setattr(tasks, "compute_and_upsert_summaries", summary_mock)
 
-    result = tasks.process_uploaded_file.run(batch_id=survey_batch.id, s3_key="mock_key")
+    result = tasks.process_uploaded_file.run(
+        batch_id=survey_batch.id, s3_key="mock_key"
+    )
 
     storage_client.load.assert_called_once_with(uri="mock_key")
     analyze_mock.assert_called_once()
@@ -140,6 +142,6 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     assert result["status"] == tasks.COMPLETED_STATUS
     assert result["batch_id"] == survey_batch.id
     assert result["processed_comments"] == 5
-    assert session.commits == 2 # Removed status update commits
+    assert session.commits == 2  # Removed status update commits
     assert session.closed
     # Status checks removed as status column is removed/not updated in task

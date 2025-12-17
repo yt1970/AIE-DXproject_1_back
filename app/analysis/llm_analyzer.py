@@ -29,6 +29,5 @@ def analyze_with_llm(
         warning = f"LLM analysis for 'full_analysis' failed: {exc}"
         logger.warning(warning)
         return LLMAnalysisResult(
-            raw={"full_analysis": {"error": str(exc)}},
-            warnings=[warning]
+            raw={"full_analysis": {"error": str(exc)}}, warnings=[warning]
         )

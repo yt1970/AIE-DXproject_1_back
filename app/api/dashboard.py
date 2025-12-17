@@ -43,7 +43,7 @@ def _choose_effective_batches(
         # batch_type='confirmed' を優先すべきだが、
         # ここでは単純に uploaded_at が最新のものを採用する（または呼び出し元でフィルタリング済みと仮定）
         # confirmed があればそれを優先するロジックを追加
-        confirmed = [b for b in batches if b.batch_type == 'confirmed']
+        confirmed = [b for b in batches if b.batch_type == "confirmed"]
         if confirmed:
             chosen[lecture_id] = max(confirmed, key=lambda b: b.uploaded_at)
         else:
@@ -111,7 +111,7 @@ def _aggregate_nps(
 
 def _comment_stats(
     rows: List[models.CommentSummary],
-) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
+) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
     sentiments = {"positive": 0, "negative": 0, "neutral": 0}
     categories = {
         "lecture_content": 0,
@@ -119,7 +119,9 @@ def _comment_stats(
         "operations": 0,
         "other": 0,
     }
-    importance = {"low": 0, "medium": 0, "high": 0}
+    priority = {"low": 0, "medium": 0, "high": 0}
+
+    fix_difficulty = {"easy": 0, "hard": 0}
 
     for row in rows:
         if row.analysis_type == "sentiment" and row.label in sentiments:
@@ -134,37 +136,55 @@ def _comment_stats(
             mapped = key_map.get(row.label)
             if mapped and mapped in categories:
                 categories[mapped] += int(row.count or 0)
-        elif row.analysis_type == "importance" and row.label in importance:
-            importance[row.label] += int(row.count or 0)
+        elif row.analysis_type == "priority" and row.label in priority:
+            priority[row.label] += int(row.count or 0)
+        elif row.analysis_type == "fix_difficulty" and row.label in fix_difficulty:
+            fix_difficulty[row.label] += int(row.count or 0)
 
     comments_count = max(
         sum(sentiments.values()),
         sum(categories.values()),
-        sum(importance.values()),
+        sum(priority.values()),
+        sum(fix_difficulty.values()),
     )
-    important_count = importance["medium"] + importance["high"]
-    return sentiments, categories, importance, comments_count, important_count
+    # important_count is now priority_high + priority_medium
+    important_count = priority["medium"] + priority["high"]
+    return (
+        sentiments,
+        categories,
+        priority,
+        fix_difficulty,
+        comments_count,
+        important_count,
+    )
 
 
 def _aggregate_sentiments(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    sentiments, _, _, _, _ = _comment_stats(summaries)
+    sentiments, _, _, _, _, _ = _comment_stats(summaries)
     return sentiments
 
 
 def _aggregate_categories(
     summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, categories, _, _, _ = _comment_stats(summaries)
+    _, categories, _, _, _, _ = _comment_stats(summaries)
     return categories
+
+
+def _aggregate_fix_difficulty(
+    summaries: List[models.CommentSummary],
+) -> Dict[str, int]:
+    _, _, _, fix_difficulty, _, _ = _comment_stats(summaries)
+    return fix_difficulty
 
 
 def _aggregate_counts(
     survey_summaries: List[models.SurveySummary],
     comment_summaries: List[models.CommentSummary],
 ) -> Dict[str, int]:
-    _, _, importance, comments_count, important_from_comments = _comment_stats(
+    _, _, _, _, comments_count, important_from_comments = _comment_stats(
         comment_summaries
     )
     return {
@@ -177,7 +197,7 @@ def _aggregate_counts(
 def _load_summaries(
     db: Session,
     batch_ids: List[int],
-    ) -> Tuple[
+) -> Tuple[
     Dict[int, models.SurveySummary],
     Dict[int, List[models.CommentSummary]],
 ]:
@@ -285,11 +305,19 @@ def dashboard_overview(
     counts = _aggregate_counts(survey_summaries, flat_comment_rows)
     sentiments = _aggregate_sentiments(flat_comment_rows)
     categories = _aggregate_categories(flat_comment_rows)
+    # Add priority aggregation here if needed for overview, usually overview returns it inside 'counts' or similar?
+    # But dashboard_overview return dict has no 'priority' key in original code?
+    # Wait, the user manual edit Step 810 shows dashboard_per_lecture returning it.
+    # dashboard_overview usually aggregates counts.
+    # I will add priority to dashboard_overview return to be safe/complete.
+    _, _, priority, fix_difficulty, _, _ = _comment_stats(flat_comment_rows)
 
     timeline = []
     timeline = []
     # lecture_on 順にソートするためにバッチから講義情報を参照
-    sorted_batches = sorted(chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+    sorted_batches = sorted(
+        chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min
+    )
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
@@ -297,10 +325,14 @@ def dashboard_overview(
             {
                 "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
-                "nps": float(summary.nps) if summary and summary.nps is not None else 0.0,
+                "nps": (
+                    float(summary.nps) if summary and summary.nps is not None else 0.0
+                ),
                 "response_count": summary.response_count if summary else 0,
                 "avg_overall_satisfaction": (
-                    float(summary.avg_satisfaction_overall) if summary and summary.avg_satisfaction_overall is not None else None
+                    float(summary.avg_satisfaction_overall)
+                    if summary and summary.avg_satisfaction_overall is not None
+                    else None
                 ),
             }
         )
@@ -311,6 +343,8 @@ def dashboard_overview(
         "counts": counts,
         "sentiments": sentiments,
         "categories": categories,
+        "priority": priority,
+        "fix_difficulty": fix_difficulty,
         "timeline": timeline,
     }
 
@@ -354,7 +388,10 @@ def dashboard_per_lecture(
 
     lectures_payload: List[dict] = []
     # lecture_on 順にソート
-    sorted_batches = sorted(list(chosen.values()), key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+    sorted_batches = sorted(
+        list(chosen.values()),
+        key=lambda b: b.lecture.lecture_on if b.lecture else date.min,
+    )
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
@@ -367,7 +404,11 @@ def dashboard_per_lecture(
                 "batch_id": batch.id,
                 "scores": _format_scores(summary),
                 "nps": {
-                    "score": float(summary.nps) if summary and summary.nps is not None else 0.0,
+                    "score": (
+                        float(summary.nps)
+                        if summary and summary.nps is not None
+                        else 0.0
+                    ),
                     "promoters": summary.promoter_count if summary else 0,
                     "passives": summary.passive_count if summary else 0,
                     "detractors": summary.detractor_count if summary else 0,
@@ -375,16 +416,17 @@ def dashboard_per_lecture(
                 },
                 "sentiments": _aggregate_sentiments(comment_summary),
                 "categories": _aggregate_categories(comment_summary),
-                "importance": {
+                "priority": {
                     "low": _comment_stats(comment_summary)[2]["low"],
                     "medium": _comment_stats(comment_summary)[2]["medium"],
                     "high": _comment_stats(comment_summary)[2]["high"],
-                    "important_comments": _comment_stats(comment_summary)[4],
+                    "priority_comments": _comment_stats(comment_summary)[5],
                 },
+                "fix_difficulty": _comment_stats(comment_summary)[3],
                 "counts": {
                     "responses": summary.response_count if summary else 0,
-                    "comments": _comment_stats(comment_summary)[3],
-                    "important_comments": _comment_stats(comment_summary)[4],
+                    "comments": _comment_stats(comment_summary)[4],
+                    "important_comments": _comment_stats(comment_summary)[5],
                 },
             }
         )

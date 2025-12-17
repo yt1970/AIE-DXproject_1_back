@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 # --- Enums ---
 
+
 class StudentAttribute(str, Enum):
     all = "all"
     student = "student"
@@ -15,10 +16,12 @@ class StudentAttribute(str, Enum):
     faculty = "faculty"
     other = "other"
 
+
 class Sentiment(str, Enum):
     positive = "positive"
     neutral = "neutral"
     negative = "negative"
+
 
 class CommentCategory(str, Enum):
     content = "content"
@@ -27,10 +30,6 @@ class CommentCategory(str, Enum):
     instructor = "instructor"
     other = "other"
 
-class Importance(str, Enum):
-    high = "high"
-    medium = "medium"
-    low = "low"
 
 class QuestionType(str, Enum):
     learned = "learned"
@@ -43,13 +42,16 @@ class QuestionType(str, Enum):
 
 # --- Shared / Common ---
 
+
 class ScoreItem(BaseModel):
     name: str
     score: float
 
+
 class NPSTrendItem(BaseModel):
     session: str
     nps_score: float
+
 
 class LectureInfoItem(BaseModel):
     lecture_id: int
@@ -61,16 +63,19 @@ class LectureInfoItem(BaseModel):
 
 # --- Trends Response ---
 
+
 class ResponseTrendItem(BaseModel):
     session: str
     response_count: int
     retention_rate: float
     breakdown: Optional[Dict[str, int]] = None
 
+
 class ParticipationTrendItem(BaseModel):
     session: str
     zoom_participants: Optional[int] = None
     recording_views: Optional[int] = None
+
 
 class NPSSummary(BaseModel):
     score: float
@@ -82,24 +87,29 @@ class NPSSummary(BaseModel):
     detractors_percentage: float
     total_responses: int
 
+
 class ScoreTrendItem(BaseModel):
     session: str
     scores: Dict[str, float]
 
+
 class OverallAverages(BaseModel):
-    overall: Dict[str, object] # {label: str, items: List[ScoreItem]}
+    overall: Dict[str, object]  # {label: str, items: List[ScoreItem]}
     content: Dict[str, object]
     instructor: Dict[str, object]
     self_evaluation: Dict[str, object]
+
 
 class SentimentSummaryItem(BaseModel):
     sentiment: Sentiment
     count: int
     percentage: float
 
+
 class CategorySummaryItem(BaseModel):
     category: CommentCategory
     count: int
+
 
 class OverallTrendsResponse(BaseModel):
     lecture_info: List[LectureInfoItem]
@@ -115,6 +125,7 @@ class OverallTrendsResponse(BaseModel):
 
 # --- Comparison Response ---
 
+
 class YearMetrics(BaseModel):
     academic_year: int
     term: str
@@ -123,6 +134,7 @@ class YearMetrics(BaseModel):
     average_nps: float
     average_scores: Dict[str, float]
 
+
 class ScoreComparisonItem(BaseModel):
     category: str
     category_key: str
@@ -130,14 +142,16 @@ class ScoreComparisonItem(BaseModel):
     comparison_score: float
     difference: float
 
+
 class YearComparisonResponse(BaseModel):
     current: YearMetrics
     comparison: YearMetrics
-    nps_trends: Dict[str, List[NPSTrendItem]] # {current: [], comparison: []}
+    nps_trends: Dict[str, List[NPSTrendItem]]  # {current: [], comparison: []}
     score_comparison: List[ScoreComparisonItem]
 
 
 # --- Lecture Analysis Response ---
+
 
 class SessionLectureInfo(BaseModel):
     lecture_id: int
@@ -146,6 +160,7 @@ class SessionLectureInfo(BaseModel):
     instructor_name: str
     description: Optional[str] = None
     response_count: int
+
 
 class SessionNPS(BaseModel):
     score: float
@@ -156,15 +171,18 @@ class SessionNPS(BaseModel):
     detractors_count: int
     detractors_percentage: float
 
+
 class AverageScoreItem(BaseModel):
     category: str
     category_key: str
     score: float
     full_mark: int = 5
 
+
 class RatingDistribution(BaseModel):
     rating: int
     count: int
+
 
 class ScoreDistributions(BaseModel):
     overall_satisfaction: List[RatingDistribution]
@@ -179,12 +197,15 @@ class ScoreDistributions(BaseModel):
     motivation: List[RatingDistribution]
     future_application: List[RatingDistribution]
 
+
 class CommentItem(BaseModel):
     id: str
     text: str
     sentiment: Optional[Sentiment] = None
     category: Optional[CommentCategory] = None
-    importance: Optional[Importance] = None
+    priority: Optional[str] = None
+    fix_difficulty: Optional[str] = None
+    risk_level: Optional[str] = None
     question_type: QuestionType
 
 
@@ -193,5 +214,6 @@ class SessionAnalysisResponse(BaseModel):
     nps: SessionNPS
     average_scores: List[AverageScoreItem]
     score_distributions: ScoreDistributions
-    important_comments: List[CommentItem]
+    fix_difficulty: Dict[str, int]
+    priority_comments: List[CommentItem]
     comments: List[CommentItem]

@@ -41,16 +41,16 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
     csv_content = (
         "アカウントID,アカウント名,【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ,"
         "本日の総合的な満足度を５段階で教えてください。,親しいご友人にこの講義の受講をお薦めしますか？,"
-        "\"本日の講義内容について５段階で教えてください。\n学習量は適切だった\","
-        "\"本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた\","
-        "\"本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった\","
+        '"本日の講義内容について５段階で教えてください。\n学習量は適切だった",'
+        '"本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた",'
+        '"本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった",'
         "本日の講師の総合的な満足度を５段階で教えてください。,"
-        "\"本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた\","
-        "\"本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた\","
-        "\"本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった\","
-        "\"ご自身について５段階で教えてください。\n事前に予習をした\","
-        "\"ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ\","
-        "\"ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる\"\n"
+        '"本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた",'
+        '"本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた",'
+        '"本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった",'
+        '"ご自身について５段階で教えてください。\n事前に予習をした",'
+        '"ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ",'
+        '"ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる"\n'
         "user1,Student A,必須コメント,Great session!,Thank you!,5,10,5,5,5,5,5,5,5,5,5,5\n"
         "user2,Student B,別の必須,Needs more examples.,,4,8,4,4,4,4,4,4,4,4,4,4\n"
         "user3,Student C,また別の必須,,Follow-up requested,3,6,3,3,3,3,3,3,3,3,3,3\n"
@@ -65,7 +65,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
             "lecture_date": date,
             "instructor_name": "Test Instructor",
             "batch_type": "preliminary",
-            "zoom_participants": 100, # Required for preliminary
+            "zoom_participants": 100,  # Required for preliminary
         },
         files={
             "file": (
@@ -79,7 +79,9 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
     return int(response.json()["job_id"])
 
 
-def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: str) -> None:
+def _seed_comments_for_filter(
+    db: session_module.SessionLocal, *, course_name: str
+) -> None:
     lecture = models.Lecture(
         academic_year=2024,
         term="Spring",
@@ -91,7 +93,9 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
     db.add(lecture)
     db.flush()
 
-    batch = models.SurveyBatch(lecture_id=lecture.id, uploaded_at=datetime(2024, 5, 1, 0, 0, 0))
+    batch = models.SurveyBatch(
+        lecture_id=lecture.id, uploaded_at=datetime(2024, 5, 1, 0, 0, 0)
+    )
     db.add(batch)
     db.flush()
 
@@ -110,7 +114,7 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
         "score_recommend_friend": 10,
     }
 
-    def _add_comment(account_suffix: str, comment_text: str, importance: str) -> None:
+    def _add_comment(account_suffix: str, comment_text: str, priority: str) -> None:
         survey_response = models.SurveyResponse(
             survey_batch_id=batch.id,
             account_id=f"user-{account_suffix}",
@@ -127,7 +131,8 @@ def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: s
                 comment_text=comment_text,
                 llm_category="content",
                 llm_sentiment_type="positive",
-                llm_importance_level=importance,
+                llm_priority=priority,
+                llm_fix_difficulty="none",
                 llm_is_abusive=False,
                 is_analyzed=True,
             )
@@ -302,7 +307,9 @@ def test_duplicate_check_endpoint(client: TestClient) -> None:
 
 def test_finalize_and_version_filter(client: TestClient) -> None:
     """確定処理とバージョンフィルタの動作確認"""
-    batch_id = _post_upload(client, course="Version Course", date="2024-06-01", number=1)
+    batch_id = _post_upload(
+        client, course="Version Course", date="2024-06-01", number=1
+    )
 
     # finalize
     resp = client.post(f"/api/v1/uploads/{batch_id}/finalize")
@@ -328,10 +335,12 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
     db = session_module.SessionLocal()
     try:
         batch = (
-            db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
+            db.query(models.SurveyBatch)
+            .filter(models.SurveyBatch.id == batch_id)
+            .first()
         )
         assert batch is not None
-        
+
         # 現在の件数を控える
         # NOTE: ResponseComment doesn't have survey_batch_id, join through response
         cnt_comments = (
@@ -359,7 +368,7 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
 
     # ステータス問い合わせは404
     status_resp = client.get(f"/api/v1/uploads/{batch_id}/status")
-    # Status endpoint might be removed or changed? 
+    # Status endpoint might be removed or changed?
     # The new upload response has status_url.
     # Let's assume it's still there or check 404 is fine.
     assert status_resp.status_code == 404
@@ -367,7 +376,9 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
 
 def test_metrics_upsert_and_get(client: TestClient) -> None:
     """メトリクスの作成・更新・取得の動作確認"""
-    batch_id = _post_upload(client, course="Metrics Course", date="2024-06-10", number=1)
+    batch_id = _post_upload(
+        client, course="Metrics Course", date="2024-06-10", number=1
+    )
 
     # initial GET -> 100 (default in _post_upload)
     r0 = client.get(f"/api/v1/uploads/{batch_id}/metrics")
@@ -409,7 +420,7 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
         )
         db.add(lecture)
         db.flush()
-        
+
         batch = models.SurveyBatch(
             lecture_id=lecture.id,
             uploaded_at=datetime(2024, 5, 21, 0, 0, 0),
@@ -427,7 +438,7 @@ def test_delete_rejects_processing_state(client: TestClient) -> None:
     assert resp.status_code == 200
 
 
-def test_course_comments_important_only_filter(client: TestClient) -> None:
+def test_course_comments_priority_only_filter(client: TestClient) -> None:
     course_name = "Filter Course"
     db = session_module.SessionLocal()
     try:
@@ -436,24 +447,24 @@ def test_course_comments_important_only_filter(client: TestClient) -> None:
         db.close()
 
     encoded_course = quote(course_name, safe="")
-    important_resp = client.get(
+    priority_resp = client.get(
         f"/api/v1/courses/{encoded_course}/comments",
-        params={"important_only": True},
+        params={"priority_only": True},
     )
-    assert important_resp.status_code == 200
-    important_body = important_resp.json()
-    assert len(important_body) == 2
-    assert {item["llm_importance_level"] for item in important_body} == {
+    assert priority_resp.status_code == 200
+    priority_body = priority_resp.json()
+    assert len(priority_body) == 2
+    assert {item["llm_priority"] for item in priority_body} == {
         "high",
         "medium",
     }
 
     low_only_resp = client.get(
         f"/api/v1/courses/{encoded_course}/comments",
-        params={"importance": "low"},
+        params={"priority": "low"},
     )
     assert low_only_resp.status_code == 200
     low_body = low_only_resp.json()
     assert len(low_body) == 1
-    assert low_body[0]["llm_importance_level"] == "low"
+    assert low_body[0]["llm_priority"] == "low"
     assert low_body[0]["comment_text"] == "Need better slides"

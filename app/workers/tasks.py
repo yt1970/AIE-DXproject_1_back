@@ -29,7 +29,7 @@ COMPLETED_STATUS = "COMPLETED"
 def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
     """
     Process an uploaded CSV by running LLM analysis for each comment.
-    
+
     Args:
         batch_id: SurveyBatch ID
         s3_key: S3 key (or path) to download the file from
@@ -45,9 +45,9 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
             logger.warning("SurveyBatch not found for batch_id=%s", batch_id)
             return {"batch_id": batch_id, "status": "missing"}
 
-        # Note: Status tracking columns (status, processing_started_at, etc.) 
+        # Note: Status tracking columns (status, processing_started_at, etc.)
         # have been removed from the design, so we don't update them here.
-        
+
         content_bytes = storage_client.load(uri=s3_key)
 
         total_comments, processed_comments, total_responses = (

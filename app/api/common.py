@@ -5,12 +5,15 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+
 class AttributeItem(BaseModel):
     key: str
     label: str
 
+
 class AttributesResponse(BaseModel):
     attributes: List[AttributeItem]
+
 
 @router.get("/attributes", response_model=AttributesResponse)
 def get_attributes():

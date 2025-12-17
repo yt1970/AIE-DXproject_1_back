@@ -51,32 +51,35 @@ def create_app() -> FastAPI:
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
         error_code = "INTERNAL_ERROR"
-        if exc.status_code == 400: error_code = "INVALID_REQUEST"
-        elif exc.status_code == 401: error_code = "UNAUTHORIZED"
-        elif exc.status_code == 403: error_code = "FORBIDDEN"
-        elif exc.status_code == 404: error_code = "NOT_FOUND"
-        elif exc.status_code == 409: error_code = "CONFLICT"
-        
+        if exc.status_code == 400:
+            error_code = "INVALID_REQUEST"
+        elif exc.status_code == 401:
+            error_code = "UNAUTHORIZED"
+        elif exc.status_code == 403:
+            error_code = "FORBIDDEN"
+        elif exc.status_code == 404:
+            error_code = "NOT_FOUND"
+        elif exc.status_code == 409:
+            error_code = "CONFLICT"
+
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "error": {
-                    "code": error_code,
-                    "message": exc.detail,
-                    "details": {}
-                }
+                "error": {"code": error_code, "message": exc.detail, "details": {}}
             },
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    async def validation_exception_handler(
+        request: Request, exc: RequestValidationError
+    ):
         return JSONResponse(
             status_code=400,
             content={
                 "error": {
                     "code": "INVALID_REQUEST",
                     "message": "Validation Error",
-                    "details": {"errors": exc.errors()}
+                    "details": {"errors": exc.errors()},
                 }
             },
         )
@@ -84,6 +87,7 @@ def create_app() -> FastAPI:
     @app.exception_handler(Exception)
     async def general_exception_handler(request: Request, exc: Exception):
         import traceback
+
         print(f"Unhandled exception: {exc}")
         traceback.print_exc()
         return JSONResponse(
@@ -92,7 +96,7 @@ def create_app() -> FastAPI:
                 "error": {
                     "code": "INTERNAL_ERROR",
                     "message": "Internal Server Error",
-                    "details": {"reason": str(exc)} if config.debug else {}
+                    "details": {"reason": str(exc)} if config.debug else {},
                 }
             },
         )
@@ -101,6 +105,7 @@ def create_app() -> FastAPI:
     # 1. Middleware
     # ------------------------------------------------------------------
     from app.core.middleware import AuthMiddleware
+
     app.add_middleware(AuthMiddleware, debug=config.debug)
 
     # ------------------------------------------------------------------
@@ -130,15 +135,18 @@ def create_app() -> FastAPI:
     app.include_router(courses.router, prefix="/api/v1", tags=["Courses"])
     app.include_router(lectures.router, prefix="/api/v1", tags=["Lectures"])
     app.include_router(metrics.router, prefix="/api/v1", tags=["Metrics"])
-    
+
     from app.api import auth, common
+
     app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
     app.include_router(common.router, prefix="/api/v1", tags=["Common"])
-    
+
     from app.api import trends
+
     app.include_router(trends.router, prefix="/api/v1", tags=["Trends"])
 
     from app.api import dashboard
+
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 
     return app
