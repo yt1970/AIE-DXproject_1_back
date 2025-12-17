@@ -43,7 +43,7 @@ def _choose_effective_batches(
         # batch_type='confirmed' を優先すべきだが、
         # ここでは単純に uploaded_at が最新のものを採用する（または呼び出し元でフィルタリング済みと仮定）
         # confirmed があればそれを優先するロジックを追加
-        confirmed = [b for b in batches if b.batch_type == 'confirmed']
+        confirmed = [b for b in batches if b.batch_type == "confirmed"]
         if confirmed:
             chosen[lecture_id] = max(confirmed, key=lambda b: b.uploaded_at)
         else:
@@ -149,7 +149,14 @@ def _comment_stats(
     )
     # important_count is now priority_high + priority_medium
     important_count = priority["medium"] + priority["high"]
-    return sentiments, categories, priority, fix_difficulty, comments_count, important_count
+    return (
+        sentiments,
+        categories,
+        priority,
+        fix_difficulty,
+        comments_count,
+        important_count,
+    )
 
 
 def _aggregate_sentiments(
@@ -190,7 +197,7 @@ def _aggregate_counts(
 def _load_summaries(
     db: Session,
     batch_ids: List[int],
-    ) -> Tuple[
+) -> Tuple[
     Dict[int, models.SurveySummary],
     Dict[int, List[models.CommentSummary]],
 ]:
@@ -308,7 +315,9 @@ def dashboard_overview(
     timeline = []
     timeline = []
     # lecture_on 順にソートするためにバッチから講義情報を参照
-    sorted_batches = sorted(chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+    sorted_batches = sorted(
+        chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min
+    )
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
@@ -316,10 +325,14 @@ def dashboard_overview(
             {
                 "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
-                "nps": float(summary.nps) if summary and summary.nps is not None else 0.0,
+                "nps": (
+                    float(summary.nps) if summary and summary.nps is not None else 0.0
+                ),
                 "response_count": summary.response_count if summary else 0,
                 "avg_overall_satisfaction": (
-                    float(summary.avg_satisfaction_overall) if summary and summary.avg_satisfaction_overall is not None else None
+                    float(summary.avg_satisfaction_overall)
+                    if summary and summary.avg_satisfaction_overall is not None
+                    else None
                 ),
             }
         )
@@ -375,7 +388,10 @@ def dashboard_per_lecture(
 
     lectures_payload: List[dict] = []
     # lecture_on 順にソート
-    sorted_batches = sorted(list(chosen.values()), key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
+    sorted_batches = sorted(
+        list(chosen.values()),
+        key=lambda b: b.lecture.lecture_on if b.lecture else date.min,
+    )
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
@@ -388,7 +404,11 @@ def dashboard_per_lecture(
                 "batch_id": batch.id,
                 "scores": _format_scores(summary),
                 "nps": {
-                    "score": float(summary.nps) if summary and summary.nps is not None else 0.0,
+                    "score": (
+                        float(summary.nps)
+                        if summary and summary.nps is not None
+                        else 0.0
+                    ),
                     "promoters": summary.promoter_count if summary else 0,
                     "passives": summary.passive_count if summary else 0,
                     "detractors": summary.detractor_count if summary else 0,

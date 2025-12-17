@@ -144,7 +144,10 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment_type == "positive", rc.llm_sentiment_type == "ポジティブ"),
+                        or_(
+                            rc.llm_sentiment_type == "positive",
+                            rc.llm_sentiment_type == "ポジティブ",
+                        ),
                         1,
                     ),
                     else_=0,
@@ -153,7 +156,10 @@ def _refresh_comment_summary(
             func.sum(
                 case(
                     (
-                        or_(rc.llm_sentiment_type == "negative", rc.llm_sentiment_type == "ネガティブ"),
+                        or_(
+                            rc.llm_sentiment_type == "negative",
+                            rc.llm_sentiment_type == "ネガティブ",
+                        ),
                         1,
                     ),
                     else_=0,
@@ -353,8 +359,7 @@ def _refresh_comment_summary(
     db.add_all(rows)
     return {
         "comments_count": total_comments,
-        "priority_comments_count": priority_counts["medium"]
-        + priority_counts["high"],
+        "priority_comments_count": priority_counts["medium"] + priority_counts["high"],
     }
 
 
@@ -419,6 +424,8 @@ def _populate_score_distributions(
                     count=int(row.count),
                 )
             )
+
+
 def _nps_breakdown_from_scores(
     scores: list[int | float],
     *,

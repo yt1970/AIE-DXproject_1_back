@@ -234,37 +234,37 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     batch = _create_base_entities(db_session)
 
     responses = [
-            models.SurveyResponse(
-                survey_batch_id=batch.id,
-                account_id=f"user-{idx}",
-                score_satisfaction_overall=score,
-                score_content_volume=score,
-                score_content_understanding=score,
-                score_content_announcement=score,
-                score_instructor_overall=score,
-                score_instructor_time=score,
-                score_instructor_qa=score,
-                score_instructor_speaking=score,
-                score_self_preparation=score,
-                score_self_motivation=score,
-                score_self_future=score,
-                score_recommend_friend=score + 5,
-                student_attribute="ALL",
-            )
-            for idx, score in enumerate([3, 4, 5], start=1)
-        ]
+        models.SurveyResponse(
+            survey_batch_id=batch.id,
+            account_id=f"user-{idx}",
+            score_satisfaction_overall=score,
+            score_content_volume=score,
+            score_content_understanding=score,
+            score_content_announcement=score,
+            score_instructor_overall=score,
+            score_instructor_time=score,
+            score_instructor_qa=score,
+            score_instructor_speaking=score,
+            score_self_preparation=score,
+            score_self_motivation=score,
+            score_self_future=score,
+            score_recommend_friend=score + 5,
+            student_attribute="ALL",
+        )
+        for idx, score in enumerate([3, 4, 5], start=1)
+    ]
     db_session.add_all(responses)
     db_session.flush()
 
     comments = [
-            models.ResponseComment(
-                response_id=responses[idx].id,
-                question_type="free_comment",
-                comment_text=f"comment {idx}",
-                llm_sentiment_type=sentiment,
-                llm_category=category,
-                llm_priority=priority,
-            )
+        models.ResponseComment(
+            response_id=responses[idx].id,
+            question_type="free_comment",
+            comment_text=f"comment {idx}",
+            llm_sentiment_type=sentiment,
+            llm_category=category,
+            llm_priority=priority,
+        )
         for idx, (sentiment, category, priority) in enumerate(
             [
                 ("positive", "講義内容", "medium"),
@@ -287,6 +287,7 @@ def test_compute_and_upsert_summaries(db_session: Session) -> None:
     assert comment_counts["priority_comments_count"] == 2
 
     rows = db_session.query(models.CommentSummary).all()
+
     def _find(analysis_type: str, label: str) -> int:
         for r in rows:
             if r.analysis_type == analysis_type and r.label == label:

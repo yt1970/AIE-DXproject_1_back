@@ -237,18 +237,24 @@ class LLMClient:
             "full_analysis", ""
         )
 
-        final_prompt = PROMPT_TEMPLATE_BASE.format(
-            course_name=course_name_str,
-            question_text=question_text_str,
-            comment_text=comment_text,
-            instructions=instructions,
-        ).replace('\n', ' ').strip()
+        final_prompt = (
+            PROMPT_TEMPLATE_BASE.format(
+                course_name=course_name_str,
+                question_text=question_text_str,
+                comment_text=comment_text,
+                instructions=instructions,
+            )
+            .replace("\n", " ")
+            .strip()
+        )
 
         # 3. キャッシュキーの生成 (D. キャッシュキーの固定)
         # プロンプトの固定部分の内容（BASE_PROMPT_KEY + instructions + 質問事項名）に基づきハッシュキーを生成する
         BASE_PROMPT_KEY = "test"
         fixed_content_string = f"{BASE_PROMPT_KEY}|{instructions}"
-        GLOBAL_FIXED_CACHE_KEY = hashlib.sha256(fixed_content_string.encode('utf-8')).hexdigest()
+        GLOBAL_FIXED_CACHE_KEY = hashlib.sha256(
+            fixed_content_string.encode("utf-8")
+        ).hexdigest()
 
         if self.config.provider in {"openai", "azure_openai"}:
             payload: Dict[str, Any] = {
@@ -416,8 +422,6 @@ class LLMClient:
         for alias, target in key_aliases.items():
             if alias in normalized and target not in normalized:
                 normalized[target] = normalized[alias]
-
-
 
         # 真偽値をboolに統一
         if "is_safe" in normalized and not isinstance(normalized["is_safe"], bool):

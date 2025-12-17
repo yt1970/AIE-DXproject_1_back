@@ -18,7 +18,9 @@ PRIORITY_LEVELS = (
 )
 
 
-@router.get("/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema])
+@router.get(
+    "/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema]
+)
 def get_course_comments(
     course_name: str,
     limit: int = 100,
@@ -38,8 +40,14 @@ def get_course_comments(
     """講義名単位で最新のコメント分析結果を取得する。"""
     query = (
         db.query(models.ResponseComment)
-        .join(models.SurveyResponse, models.ResponseComment.response_id == models.SurveyResponse.id)
-        .join(models.SurveyBatch, models.SurveyResponse.survey_batch_id == models.SurveyBatch.id)
+        .join(
+            models.SurveyResponse,
+            models.ResponseComment.response_id == models.SurveyResponse.id,
+        )
+        .join(
+            models.SurveyBatch,
+            models.SurveyResponse.survey_batch_id == models.SurveyBatch.id,
+        )
         .join(models.Lecture, models.SurveyBatch.lecture_id == models.Lecture.id)
         .options(
             contains_eager(models.ResponseComment.response),
@@ -57,9 +65,7 @@ def get_course_comments(
     if priority:
         query = query.filter(models.ResponseComment.llm_priority == priority)
     elif priority_only:
-        query = query.filter(
-            models.ResponseComment.llm_priority.in_(PRIORITY_LEVELS)
-        )
+        query = query.filter(models.ResponseComment.llm_priority.in_(PRIORITY_LEVELS))
     comments_with_scores = (
         query.order_by(models.ResponseComment.id.desc()).offset(skip).limit(limit).all()
     )

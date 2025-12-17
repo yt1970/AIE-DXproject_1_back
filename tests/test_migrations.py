@@ -30,7 +30,12 @@ def test_apply_migrations_adds_missing_columns() -> None:
     columns = {column["name"] for column in inspector.get_columns(table_name)}
 
     # llm_importance_level is renamed to llm_priority
-    assert {"llm_priority", "llm_importance_score", "llm_risk_level", "llm_fix_difficulty"} <= columns
+    assert {
+        "llm_priority",
+        "llm_importance_score",
+        "llm_risk_level",
+        "llm_fix_difficulty",
+    } <= columns
 
 
 def test_apply_migrations_is_idempotent() -> None:

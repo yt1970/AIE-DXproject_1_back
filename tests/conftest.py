@@ -14,9 +14,7 @@ from app.services.storage import clear_storage_client_cache
 
 
 @pytest.fixture(name="client")
-def fixture_client(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-):
+def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """テスト用のクライアントを作成（データベースセットアップ済み）"""
     db_path = tmp_path / "test.sqlite3"
     uploads_dir = tmp_path / "uploads"

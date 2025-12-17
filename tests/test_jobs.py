@@ -30,14 +30,19 @@ def fixture_client(tmp_path, monkeypatch):
     settings_module.get_settings.cache_clear()
     clear_storage_client_cache()
     from app.workers import configure_celery_app
+
     configure_celery_app()
 
-    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
+    )
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models.Base.metadata.create_all(engine)
 
     monkeypatch.setattr(session_module, "engine", engine, raising=False)
-    monkeypatch.setattr(session_module, "SessionLocal", TestingSessionLocal, raising=False)
+    monkeypatch.setattr(
+        session_module, "SessionLocal", TestingSessionLocal, raising=False
+    )
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -57,13 +62,23 @@ def fixture_client(tmp_path, monkeypatch):
         settings_module.get_settings.cache_clear()
         clear_storage_client_cache()
 
+
 def test_job_status_processing(client):
     # Seed a batch without summary (processing)
     db = session_module.SessionLocal()
-    l = models.Lecture(name="Job Course", academic_year=2024, term="Spring", session="1", lecture_on=date(2024, 4, 1), instructor_name="Prof Job")
+    l = models.Lecture(
+        name="Job Course",
+        academic_year=2024,
+        term="Spring",
+        session="1",
+        lecture_on=date(2024, 4, 1),
+        instructor_name="Prof Job",
+    )
     db.add(l)
     db.commit()
-    b = models.SurveyBatch(lecture_id=l.id, batch_type="preliminary", uploaded_at=datetime.now())
+    b = models.SurveyBatch(
+        lecture_id=l.id, batch_type="preliminary", uploaded_at=datetime.now()
+    )
     db.add(b)
     db.commit()
     batch_id = b.id
@@ -76,17 +91,29 @@ def test_job_status_processing(client):
     assert data["status"] == "processing"
     assert data["result"] is None
 
+
 def test_job_status_completed(client):
     # Seed a batch with summary (completed)
     db = session_module.SessionLocal()
-    l = models.Lecture(name="Job Course 2", academic_year=2024, term="Spring", session="2", lecture_on=date(2024, 4, 8), instructor_name="Prof Job")
+    l = models.Lecture(
+        name="Job Course 2",
+        academic_year=2024,
+        term="Spring",
+        session="2",
+        lecture_on=date(2024, 4, 8),
+        instructor_name="Prof Job",
+    )
     db.add(l)
     db.commit()
-    b = models.SurveyBatch(lecture_id=l.id, batch_type="confirmed", uploaded_at=datetime.now())
+    b = models.SurveyBatch(
+        lecture_id=l.id, batch_type="confirmed", uploaded_at=datetime.now()
+    )
     db.add(b)
     db.commit()
-    
-    s = models.SurveySummary(survey_batch_id=b.id, student_attribute="all", response_count=50)
+
+    s = models.SurveySummary(
+        survey_batch_id=b.id, student_attribute="all", response_count=50
+    )
     db.add(s)
     db.commit()
     batch_id = b.id
@@ -99,6 +126,7 @@ def test_job_status_completed(client):
     assert data["status"] == "completed"
     assert data["result"] is not None
     assert data["result"]["response_count"] == 50
+
 
 def test_job_not_found(client):
     response = client.get("/api/v1/jobs/99999")

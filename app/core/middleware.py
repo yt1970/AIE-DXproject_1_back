@@ -34,7 +34,9 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     decoded = base64.urlsafe_b64decode(payload_part)
                     jwt_payload = json.loads(decoded)
                     user_info["email"] = jwt_payload.get("email")
-                    user_info["username"] = jwt_payload.get("username") or jwt_payload.get("cognito:username")
+                    user_info["username"] = jwt_payload.get(
+                        "username"
+                    ) or jwt_payload.get("cognito:username")
                 except Exception as e:
                     print(f"Failed to decode OIDC data: {e}")
         elif self.debug:
@@ -43,7 +45,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "sub": "local-dev-user-id",
                 "username": "local_dev_user",
                 "email": "dev@example.com",
-                "role": "admin"
+                "role": "admin",
             }
 
         # Store in request state

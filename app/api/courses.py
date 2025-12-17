@@ -19,6 +19,7 @@ from app.schemas.course import (
 
 router = APIRouter()
 
+
 @router.get("/courses", response_model=CourseListResponse)
 def list_courses(
     name: Optional[str] = None,
@@ -40,7 +41,7 @@ def list_courses(
 
     # Eager load batches to avoid N+1
     # q = q.options(joinedload(models.Lecture.survey_batches)) # If needed
-    
+
     lectures = q.all()
 
     # Group by (name, academic_year, term)
@@ -50,34 +51,35 @@ def list_courses(
         grouped[key].append(lec)
 
     course_items: List[CourseItem] = []
-    
+
     for (c_name, c_year, c_term), lecs in grouped.items():
         # Sort lectures by date or session if needed
         lecs.sort(key=lambda x: x.lecture_on)
-        
+
         sessions: List[SessionSummary] = []
         for lec in lecs:
             # Determine available analysis types from batches
             types = set()
             for batch in lec.survey_batches:
-                if batch.batch_type == 'preliminary':
+                if batch.batch_type == "preliminary":
                     types.add(AnalysisType.preliminary)
-                elif batch.batch_type == 'confirmed':
+                elif batch.batch_type == "confirmed":
                     types.add(AnalysisType.confirmed)
-            
-            sessions.append(SessionSummary(
-                lecture_id=lec.id,
-                session=lec.session,
-                lecture_date=lec.lecture_on,
-                analysis_types=list(types)
-            ))
 
-        course_items.append(CourseItem(
-            name=c_name,
-            academic_year=c_year,
-            term=c_term,
-            sessions=sessions
-        ))
+            sessions.append(
+                SessionSummary(
+                    lecture_id=lec.id,
+                    session=lec.session,
+                    lecture_date=lec.lecture_on,
+                    analysis_types=list(types),
+                )
+            )
+
+        course_items.append(
+            CourseItem(
+                name=c_name, academic_year=c_year, term=c_term, sessions=sessions
+            )
+        )
 
     course_items.sort(key=lambda x: (-x.academic_year, x.name))
     return CourseListResponse(courses=course_items)
@@ -115,28 +117,29 @@ def get_course_detail(
             try:
                 b_type = AnalysisType(b.batch_type)
             except ValueError:
-                continue # Skip invalid types
+                continue  # Skip invalid types
 
-            batches.append(BatchInfo(
-                id=b.id,
-                batch_type=b_type,
-                zoom_participants=b.zoom_participants,
-                recording_views=b.recording_views,
-                uploaded_at=b.uploaded_at
-            ))
-        
-        lecture_infos.append(LectureInfo(
-            id=lec.id,
-            session=lec.session,
-            lecture_date=lec.lecture_on,
-            instructor_name=lec.instructor_name,
-            description=lec.description,
-            batches=batches
-        ))
+            batches.append(
+                BatchInfo(
+                    id=b.id,
+                    batch_type=b_type,
+                    zoom_participants=b.zoom_participants,
+                    recording_views=b.recording_views,
+                    uploaded_at=b.uploaded_at,
+                )
+            )
+
+        lecture_infos.append(
+            LectureInfo(
+                id=lec.id,
+                session=lec.session,
+                lecture_date=lec.lecture_on,
+                instructor_name=lec.instructor_name,
+                description=lec.description,
+                batches=batches,
+            )
+        )
 
     return CourseDetailResponse(
-        name=name,
-        academic_year=academic_year,
-        term=term,
-        lectures=lecture_infos
+        name=name, academic_year=academic_year, term=term, lectures=lecture_infos
     )

@@ -74,35 +74,38 @@ def search_batches(
         )
         .all()
     )
-    
+
     if not lectures:
         return BatchSearchResponse(batches=[])
-        
+
     lecture_ids = [l.id for l in lectures]
-    
+
     batches = (
         db.query(models.SurveyBatch)
         .filter(models.SurveyBatch.lecture_id.in_(lecture_ids))
         .order_by(models.SurveyBatch.uploaded_at.desc())
         .all()
     )
-    
+
     # Map to response
     items = []
     for b in batches:
         # Find corresponding lecture
         lec = next((l for l in lectures if l.id == b.lecture_id), None)
-        if not lec: continue
-        
-        items.append(BatchSearchItem(
-            batch_id=b.id,
-            lecture_id=lec.id,
-            session=lec.session,
-            lecture_date=lec.lecture_on,
-            batch_type=b.batch_type,
-            uploaded_at=b.uploaded_at
-        ))
-        
+        if not lec:
+            continue
+
+        items.append(
+            BatchSearchItem(
+                batch_id=b.id,
+                lecture_id=lec.id,
+                session=lec.session,
+                lecture_date=lec.lecture_on,
+                batch_type=b.batch_type,
+                uploaded_at=b.uploaded_at,
+            )
+        )
+
     return BatchSearchResponse(batches=items)
 
 
@@ -115,9 +118,7 @@ def delete_survey_batch(
     特定の講義回・分析タイプのデータを削除する。
     """
     survey_batch = (
-        db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.id == batch_id)
-        .first()
+        db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
     )
     if not survey_batch:
         raise HTTPException(
@@ -128,16 +129,20 @@ def delete_survey_batch(
     # Assuming if summary exists, it's done. If not, it might be processing.
     # But for deletion, we might want to allow deleting stuck jobs too?
     # API def says "Delete specific batch".
-    
+
     removed_comments = 0
     removed_survey_responses = 0
-    
+
     # Delete related data
     removed_comments = (
         db.query(models.ResponseComment)
-        .filter(models.ResponseComment.response_id.in_(
-            db.query(models.SurveyResponse.id).filter(models.SurveyResponse.survey_batch_id == batch_id)
-        ))
+        .filter(
+            models.ResponseComment.response_id.in_(
+                db.query(models.SurveyResponse.id).filter(
+                    models.SurveyResponse.survey_batch_id == batch_id
+                )
+            )
+        )
         .delete(synchronize_session=False)
     )
     removed_survey_responses = (
@@ -145,7 +150,7 @@ def delete_survey_batch(
         .filter(models.SurveyResponse.survey_batch_id == batch_id)
         .delete(synchronize_session=False)
     )
-    
+
     db.query(models.SurveySummary).filter(
         models.SurveySummary.survey_batch_id == batch_id
     ).delete(synchronize_session=False)
@@ -155,12 +160,12 @@ def delete_survey_batch(
     db.query(models.ScoreDistribution).filter(
         models.ScoreDistribution.survey_batch_id == batch_id
     ).delete(synchronize_session=False)
-    
+
     db.delete(survey_batch)
     db.commit()
 
     # Response format: { success: true, deleted_batch_id: ..., message: ... }
-    # But return type says DeleteUploadResponse. 
+    # But return type says DeleteUploadResponse.
     # API def says:
     # interface DeleteResponse {
     #   success: true;
@@ -175,16 +180,20 @@ def delete_survey_batch(
     # I'll return a dict that matches the API def and change response_model to dict or new schema.
     # For now, I'll stick to DeleteUploadResponse but maybe I should have updated it.
     # Let's just return what matches the existing schema but ensure logic is correct.
-    
+
     return DeleteUploadResponse(
         success=True,
         deleted_batch_id=batch_id,
         deleted_response_count=removed_survey_responses or 0,
-        message=f"バッチID {batch_id} のデータ（{removed_survey_responses or 0}件）を削除しました。"
+        message=f"バッチID {batch_id} のデータ（{removed_survey_responses or 0}件）を削除しました。",
     )
 
 
-@router.post("/surveys/upload", response_model=UploadResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/surveys/upload",
+    response_model=UploadResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
 async def upload_survey_data(
     file: Annotated[UploadFile, File()],
     course_name: Annotated[str, Form()],
@@ -208,7 +217,7 @@ async def upload_survey_data(
     # If session is "第N回", I can extract N. Or just use session string if I update the model/logic.
     # The Lecture model has 'session' as String(50). So I can use it directly.
     # But duplicate check logic might rely on it.
-    
+
     # Read file
     try:
         content_bytes = await file.read()
@@ -221,16 +230,25 @@ async def upload_survey_data(
     # Validation for batch_type specific fields
     if batch_type == "preliminary":
         if zoom_participants is None:
-            raise HTTPException(status_code=400, detail="zoom_participants is required for preliminary batch")
+            raise HTTPException(
+                status_code=400,
+                detail="zoom_participants is required for preliminary batch",
+            )
     elif batch_type == "confirmed":
         if recording_views is None:
-            raise HTTPException(status_code=400, detail="recording_views is required for confirmed batch")
+            raise HTTPException(
+                status_code=400,
+                detail="recording_views is required for confirmed batch",
+            )
     else:
-        raise HTTPException(status_code=400, detail="Invalid batch_type. Must be 'preliminary' or 'confirmed'")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid batch_type. Must be 'preliminary' or 'confirmed'",
+        )
 
     # Validate CSV/Excel
     validate_csv_or_raise(content_bytes, filename=file.filename)
-    
+
     # Save to storage
     storage_client = get_storage_client()
     # Build a path
@@ -255,7 +273,7 @@ async def upload_survey_data(
         )
         .first()
     )
-    
+
     if not lecture:
         lecture = models.Lecture(
             academic_year=academic_year,
@@ -269,20 +287,20 @@ async def upload_survey_data(
         db.add(lecture)
         db.commit()
         db.refresh(lecture)
-    
+
     # Check for existing batch
     existing_batch = (
         db.query(models.SurveyBatch)
         .filter(
             models.SurveyBatch.lecture_id == lecture.id,
-            models.SurveyBatch.batch_type == batch_type
+            models.SurveyBatch.batch_type == batch_type,
         )
         .first()
     )
     if existing_batch:
         raise HTTPException(
-            status_code=409, 
-            detail=f"Batch already exists for {course_name} {session} ({batch_type})"
+            status_code=409,
+            detail=f"Batch already exists for {course_name} {session} ({batch_type})",
         )
 
     # Create Batch
@@ -296,7 +314,7 @@ async def upload_survey_data(
     db.add(new_batch)
     db.commit()
     db.refresh(new_batch)
-    
+
     # Enqueue processing
     try:
         process_uploaded_file.delay(batch_id=new_batch.id, s3_key=stored_uri)
@@ -312,11 +330,13 @@ async def upload_survey_data(
         message="アップロードを受け付けました。処理状況を確認してください。",
     )
 
+
 # --- Keep existing endpoints if needed or remove ---
 # check_duplicate_upload, finalize_analysis, delete_uploaded_by_identity
 # I will keep finalize_analysis as it might be useful.
 # check_duplicate_upload is likely replaced by the logic inside upload.
 # delete_uploaded_by_identity is replaced by delete_survey_batch.
+
 
 @router.post("/uploads/{survey_batch_id}/finalize")
 def finalize_analysis(
@@ -335,7 +355,7 @@ def finalize_analysis(
         raise HTTPException(
             status_code=404, detail=f"Batch with id {survey_batch_id} not found"
         )
-    
+
     # バッチタイプを確定版に更新
     survey_batch.batch_type = "confirmed"
     # survey_batch.finalized_at = datetime.now(UTC) # モデルにないのでコメントアウト
@@ -343,14 +363,17 @@ def finalize_analysis(
     # コメント自体にはバージョン概念を持たせず、バッチの種別で状態を管理する。
     updated_comments = (
         db.query(models.ResponseComment)
-        .join(models.SurveyResponse, models.ResponseComment.response_id == models.SurveyResponse.id)
+        .join(
+            models.SurveyResponse,
+            models.ResponseComment.response_id == models.SurveyResponse.id,
+        )
         .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
         .count()
     )
 
     # 現在のバッチ状態（batch_type）に基づいてサマリを再計算する。
     compute_and_upsert_summaries(db, survey_batch=survey_batch, version="final")
-    
+
     db.add(survey_batch)
     db.commit()
 
@@ -359,4 +382,3 @@ def finalize_analysis(
         "finalized": True,
         "updated_comments": updated_comments,
     }
-

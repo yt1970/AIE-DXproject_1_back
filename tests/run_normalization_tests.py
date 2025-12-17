@@ -13,7 +13,13 @@ from app.analysis.analyzer import (
     _normalize_risk_level,
     _normalize_sentiment,
 )
-from app.db.models import CategoryType, FixDifficultyType, PriorityType, RiskLevelType, SentimentType
+from app.db.models import (
+    CategoryType,
+    FixDifficultyType,
+    PriorityType,
+    RiskLevelType,
+    SentimentType,
+)
 
 
 def test_sentiment_normalization():
@@ -80,9 +86,7 @@ def test_priority_normalization():
     print("Testing priority normalization...")
 
     assert _normalize_priority("high") == PriorityType.high, "high failed"
-    assert (
-        _normalize_priority("HIGH") == PriorityType.high
-    ), "HIGH (uppercase) failed"
+    assert _normalize_priority("HIGH") == PriorityType.high, "HIGH (uppercase) failed"
     assert _normalize_priority("medium") == PriorityType.medium, "medium failed"
     assert (
         _normalize_priority("Medium") == PriorityType.medium

@@ -4,7 +4,13 @@ import logging
 from functools import lru_cache
 from typing import List, Optional
 
-from app.db.models import CategoryType, PriorityType, FixDifficultyType, RiskLevelType, SentimentType
+from app.db.models import (
+    CategoryType,
+    FixDifficultyType,
+    PriorityType,
+    RiskLevelType,
+    SentimentType,
+)
 from app.services import LLMClient, LLMClientConfig, build_default_llm_config
 
 from . import aggregation, llm_analyzer, safety
@@ -56,7 +62,11 @@ class CommentAnalysisResult:
 
     @property
     def fix_difficulty(self) -> str:
-        return self.fix_difficulty_normalized.value if self.fix_difficulty_normalized else ""
+        return (
+            self.fix_difficulty_normalized.value
+            if self.fix_difficulty_normalized
+            else ""
+        )
 
     @property
     def risk_level(self) -> str:
@@ -127,17 +137,17 @@ def analyze_comment(
     # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
     # --- 各種分析ロジックを呼び出し、最終的な判定を行う ---
     # is_improvement_needed: PriorityがHighまたはMediumの場合にTrueとする
-    
+
     priority_enum = _normalize_priority(llm_structured.priority)
     fix_difficulty_enum = _normalize_fix_difficulty(llm_structured.fix_difficulty)
-    
+
     is_improvement_needed = False
     if priority_enum in (PriorityType.high, PriorityType.medium):
         is_improvement_needed = True
 
     # is_abusive: 安全性チェックモジュールで誹謗中傷を判定
     is_abusive = not safety.is_comment_safe(comment_text, llm_structured)
-    
+
     # LLMの処理が走らなかった場合の処理を行っている。キーワード一致での予測を行っている。
     category_guess, sentiment_guess = aggregation.classify_comment(
         comment_text, llm_structured
@@ -145,7 +155,7 @@ def analyze_comment(
 
     sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
     category_enum = _normalize_category(llm_structured.category or category_guess)
-    
+
     # 既存コードで既に正規化しているが、念のため再取得（あるいは変数を再利用）
     # priority_enum, fix_difficulty_enum は上で定義済み
     risk_level_enum = _normalize_risk_level(llm_structured.risk_level)
@@ -153,9 +163,7 @@ def analyze_comment(
     # 最終的な結果を構築
     llm_structured.risk_level = risk_level_enum.value
     llm_structured.category = category_enum.value
-    llm_structured.priority = (
-        priority_enum.value if priority_enum is not None else None
-    )
+    llm_structured.priority = priority_enum.value if priority_enum is not None else None
     llm_structured.fix_difficulty = (
         fix_difficulty_enum.value if fix_difficulty_enum is not None else None
     )
@@ -165,7 +173,7 @@ def analyze_comment(
     # llm_structured への割り当て（Pydanticモデル側には _normalized フィールドはないかもしれないが、
     # 既存コードで代入しているので踏襲するか、Pydantic側定義にはないなら不要）
     # ここではローカル変数として渡す
-    
+
     return CommentAnalysisResult(
         is_improvement_needed=is_improvement_needed,
         is_abusive=is_abusive,

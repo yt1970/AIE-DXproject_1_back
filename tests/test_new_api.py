@@ -79,12 +79,22 @@ def fixture_client(
 def _seed_data(db: session_module.SessionLocal):
     # Create Lectures
     l1 = models.Lecture(
-        name="Course A", academic_year=2024, term="Spring", session="1",
-        lecture_on=date(2024, 4, 1), instructor_name="Prof A", description="Desc A"
+        name="Course A",
+        academic_year=2024,
+        term="Spring",
+        session="1",
+        lecture_on=date(2024, 4, 1),
+        instructor_name="Prof A",
+        description="Desc A",
     )
     l2 = models.Lecture(
-        name="Course A", academic_year=2024, term="Spring", session="2",
-        lecture_on=date(2024, 4, 8), instructor_name="Prof A", description="Desc A2"
+        name="Course A",
+        academic_year=2024,
+        term="Spring",
+        session="2",
+        lecture_on=date(2024, 4, 8),
+        instructor_name="Prof A",
+        description="Desc A2",
     )
     db.add_all([l1, l2])
     db.commit()
@@ -93,10 +103,14 @@ def _seed_data(db: session_module.SessionLocal):
 
     # Create Batches
     b1 = models.SurveyBatch(
-        lecture_id=l1.id, batch_type="preliminary", uploaded_at=datetime(2024, 4, 1, 10, 0)
+        lecture_id=l1.id,
+        batch_type="preliminary",
+        uploaded_at=datetime(2024, 4, 1, 10, 0),
     )
     b2 = models.SurveyBatch(
-        lecture_id=l2.id, batch_type="confirmed", uploaded_at=datetime(2024, 4, 8, 10, 0)
+        lecture_id=l2.id,
+        batch_type="confirmed",
+        uploaded_at=datetime(2024, 4, 8, 10, 0),
     )
     db.add_all([b1, b2])
     db.commit()
@@ -124,9 +138,10 @@ def test_get_course_detail(client: TestClient):
     _seed_data(db)
     db.close()
 
-    response = client.get("/api/v1/courses/detail", params={
-        "name": "Course A", "academic_year": 2024, "term": "Spring"
-    })
+    response = client.get(
+        "/api/v1/courses/detail",
+        params={"name": "Course A", "academic_year": 2024, "term": "Spring"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Course A"
@@ -140,9 +155,9 @@ def test_get_lecture_analysis(client: TestClient):
     lid = l1.id
     db.close()
 
-    response = client.get(f"/api/v1/lectures/{lid}/analysis", params={
-        "batch_type": "preliminary"
-    })
+    response = client.get(
+        f"/api/v1/lectures/{lid}/analysis", params={"batch_type": "preliminary"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["lecture_info"]["lecture_id"] == lid
@@ -154,16 +169,16 @@ def test_upload_survey_multipart(client: TestClient):
     csv_content = (
         "アカウントID,アカウント名,【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ,"
         "本日の総合的な満足度を５段階で教えてください。,親しいご友人にこの講義の受講をお薦めしますか？,"
-        "\"本日の講義内容について５段階で教えてください。\n学習量は適切だった\","
-        "\"本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた\","
-        "\"本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった\","
+        '"本日の講義内容について５段階で教えてください。\n学習量は適切だった",'
+        '"本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた",'
+        '"本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった",'
         "本日の講師の総合的な満足度を５段階で教えてください。,"
-        "\"本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた\","
-        "\"本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた\","
-        "\"本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった\","
-        "\"ご自身について５段階で教えてください。\n事前に予習をした\","
-        "\"ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ\","
-        "\"ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる\"\n"
+        '"本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた",'
+        '"本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた",'
+        '"本日の講師について５段階で教えてください。\n話し方や声の大きさが適切だった",'
+        '"ご自身について５段階で教えてください。\n事前に予習をした",'
+        '"ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ",'
+        '"ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる"\n'
         "user1,Student A,必須コメント,Great session!,Thank you!,5,10,5,5,5,5,5,5,5,5,5,5\n"
     )
     files = {"file": ("test.csv", csv_content, "text/csv")}
@@ -175,9 +190,9 @@ def test_upload_survey_multipart(client: TestClient):
         "lecture_date": "2024-10-01",
         "instructor_name": "Prof New",
         "batch_type": "preliminary",
-        "zoom_participants": 10
+        "zoom_participants": 10,
     }
-    
+
     response = client.post("/api/v1/surveys/upload", data=data, files=files)
     assert response.status_code == 202
     resp_data = response.json()
@@ -190,10 +205,11 @@ def test_search_batches(client: TestClient):
     db = session_module.SessionLocal()
     _seed_data(db)
     db.close()
-    
-    response = client.get("/api/v1/surveys/batches/search", params={
-        "course_name": "Course A", "academic_year": 2024, "term": "Spring"
-    })
+
+    response = client.get(
+        "/api/v1/surveys/batches/search",
+        params={"course_name": "Course A", "academic_year": 2024, "term": "Spring"},
+    )
     assert response.status_code == 200
     data = response.json()
     assert "batches" in data
@@ -204,52 +220,88 @@ def test_get_overall_trends(client: TestClient):
     db = session_module.SessionLocal()
     # Seed data for trends
     l1 = models.Lecture(
-        name="Trend Course", academic_year=2024, term="Spring", session="1",
-        lecture_on=date(2024, 4, 1), instructor_name="Prof T", description="Desc T"
+        name="Trend Course",
+        academic_year=2024,
+        term="Spring",
+        session="1",
+        lecture_on=date(2024, 4, 1),
+        instructor_name="Prof T",
+        description="Desc T",
     )
     l2 = models.Lecture(
-        name="Trend Course", academic_year=2024, term="Spring", session="2",
-        lecture_on=date(2024, 4, 8), instructor_name="Prof T", description="Desc T2"
+        name="Trend Course",
+        academic_year=2024,
+        term="Spring",
+        session="2",
+        lecture_on=date(2024, 4, 8),
+        instructor_name="Prof T",
+        description="Desc T2",
     )
     db.add_all([l1, l2])
     db.commit()
     db.refresh(l1)
     db.refresh(l2)
-    
-    b1 = models.SurveyBatch(lecture_id=l1.id, batch_type="confirmed", uploaded_at=datetime(2024, 4, 1, 10, 0))
-    b2 = models.SurveyBatch(lecture_id=l2.id, batch_type="confirmed", uploaded_at=datetime(2024, 4, 8, 10, 0))
+
+    b1 = models.SurveyBatch(
+        lecture_id=l1.id,
+        batch_type="confirmed",
+        uploaded_at=datetime(2024, 4, 1, 10, 0),
+    )
+    b2 = models.SurveyBatch(
+        lecture_id=l2.id,
+        batch_type="confirmed",
+        uploaded_at=datetime(2024, 4, 8, 10, 0),
+    )
     db.add_all([b1, b2])
     db.commit()
     db.refresh(b1)
     db.refresh(b2)
-    
+
     # Summaries for Batch 1
-    s1_all = models.SurveySummary(survey_batch_id=b1.id, student_attribute="all", response_count=100, nps=10.0)
-    s1_stu = models.SurveySummary(survey_batch_id=b1.id, student_attribute="student", response_count=60)
-    s1_cor = models.SurveySummary(survey_batch_id=b1.id, student_attribute="corporate", response_count=40)
-    
+    s1_all = models.SurveySummary(
+        survey_batch_id=b1.id, student_attribute="all", response_count=100, nps=10.0
+    )
+    s1_stu = models.SurveySummary(
+        survey_batch_id=b1.id, student_attribute="student", response_count=60
+    )
+    s1_cor = models.SurveySummary(
+        survey_batch_id=b1.id, student_attribute="corporate", response_count=40
+    )
+
     # Summaries for Batch 2
-    s2_all = models.SurveySummary(survey_batch_id=b2.id, student_attribute="all", response_count=80, nps=20.0)
-    s2_stu = models.SurveySummary(survey_batch_id=b2.id, student_attribute="student", response_count=50)
-    s2_cor = models.SurveySummary(survey_batch_id=b2.id, student_attribute="corporate", response_count=30)
-    
+    s2_all = models.SurveySummary(
+        survey_batch_id=b2.id, student_attribute="all", response_count=80, nps=20.0
+    )
+    s2_stu = models.SurveySummary(
+        survey_batch_id=b2.id, student_attribute="student", response_count=50
+    )
+    s2_cor = models.SurveySummary(
+        survey_batch_id=b2.id, student_attribute="corporate", response_count=30
+    )
+
     db.add_all([s1_all, s1_stu, s1_cor, s2_all, s2_stu, s2_cor])
     db.commit()
     db.close()
 
-    response = client.get("/api/v1/courses/trends", params={
-        "name": "Trend Course", "academic_year": 2024, "term": "Spring", "batch_type": "confirmed"
-    })
+    response = client.get(
+        "/api/v1/courses/trends",
+        params={
+            "name": "Trend Course",
+            "academic_year": 2024,
+            "term": "Spring",
+            "batch_type": "confirmed",
+        },
+    )
     assert response.status_code == 200
     data = response.json()
-    
+
     trends = data["response_trends"]
     assert len(trends) == 2
-    
+
     # Check Retention (1st session = 100, 2nd session = 80 -> 80%)
     assert trends[0]["retention_rate"] == 100.0
     assert trends[1]["retention_rate"] == 80.0
-    
+
     # Check Breakdown
     assert trends[0]["breakdown"]["student"] == 60
     assert trends[0]["breakdown"]["corporate"] == 40

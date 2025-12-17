@@ -11,7 +11,9 @@ router = APIRouter()
 
 
 @router.get("/uploads/{survey_batch_id}/metrics", response_model=LectureMetricsResponse)
-def get_metrics(survey_batch_id: int, db: Session = Depends(get_db)) -> LectureMetricsResponse:
+def get_metrics(
+    survey_batch_id: int, db: Session = Depends(get_db)
+) -> LectureMetricsResponse:
     """Return metrics for a specific survey batch."""
     batch = (
         db.query(models.SurveyBatch)
@@ -19,13 +21,15 @@ def get_metrics(survey_batch_id: int, db: Session = Depends(get_db)) -> LectureM
         .first()
     )
     if not batch:
-        raise HTTPException(status_code=404, detail=f"Batch with id {survey_batch_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Batch with id {survey_batch_id} not found"
+        )
 
     return LectureMetricsResponse(
         survey_batch_id=survey_batch_id,
         zoom_participants=batch.zoom_participants,
         recording_views=batch.recording_views,
-        updated_at=batch.uploaded_at, # Using uploaded_at as proxy for updated_at since we don't track update time
+        updated_at=batch.uploaded_at,  # Using uploaded_at as proxy for updated_at since we don't track update time
     )
 
 
@@ -42,7 +46,9 @@ def upsert_metrics(
         .first()
     )
     if not batch:
-        raise HTTPException(status_code=404, detail=f"Batch with id {survey_batch_id} not found")
+        raise HTTPException(
+            status_code=404, detail=f"Batch with id {survey_batch_id} not found"
+        )
 
     batch.zoom_participants = payload.zoom_participants
     batch.recording_views = payload.recording_views
@@ -59,27 +65,29 @@ def upsert_metrics(
     )
 
 
-def _choose_target_batch_for_lecture(db: Session, lecture_id: int) -> models.SurveyBatch | None:
+def _choose_target_batch_for_lecture(
+    db: Session, lecture_id: int
+) -> models.SurveyBatch | None:
     """Pick confirmed batch for lecture or fallback to latest upload."""
     # Try confirmed first
     batch = (
         db.query(models.SurveyBatch)
         .filter(
             models.SurveyBatch.lecture_id == lecture_id,
-            models.SurveyBatch.batch_type == 'confirmed'
+            models.SurveyBatch.batch_type == "confirmed",
         )
         .order_by(models.SurveyBatch.uploaded_at.desc())
         .first()
     )
     if batch:
         return batch
-        
+
     # Fallback to preliminary
     batch = (
         db.query(models.SurveyBatch)
         .filter(
             models.SurveyBatch.lecture_id == lecture_id,
-            models.SurveyBatch.batch_type == 'preliminary'
+            models.SurveyBatch.batch_type == "preliminary",
         )
         .order_by(models.SurveyBatch.uploaded_at.desc())
         .first()
@@ -96,7 +104,7 @@ def get_metrics_by_lecture(
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
-        
+
     batch = _choose_target_batch_for_lecture(db, lecture_id)
     if not batch:
         return LectureMetricsResponse(survey_batch_id=0)
@@ -119,7 +127,7 @@ def upsert_metrics_by_lecture(
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
-        
+
     batch = _choose_target_batch_for_lecture(db, lecture_id)
     if not batch:
         raise HTTPException(
@@ -131,7 +139,7 @@ def upsert_metrics_by_lecture(
     db.add(batch)
     db.commit()
     db.refresh(batch)
-    
+
     return LectureMetricsResponse(
         survey_batch_id=batch.id,
         zoom_participants=batch.zoom_participants,

@@ -30,9 +30,11 @@ class JobResult(BaseModel):
     batch_id: int
     response_count: int
 
+
 class JobError(BaseModel):
     code: str
     message: str
+
 
 class JobStatusResponse(BaseModel):
     job_id: str
@@ -49,7 +51,9 @@ class CommentAnalysisSchema(BaseModel):
     # ユーザー情報をCommentモデルから直接取得する
     question_type: Optional[str] = None
     priority: Optional[str] = Field(default=None, validation_alias="llm_priority")
-    fix_difficulty: Optional[str] = Field(default=None, validation_alias="llm_fix_difficulty")
+    fix_difficulty: Optional[str] = Field(
+        default=None, validation_alias="llm_fix_difficulty"
+    )
     comment_text: str
 
     llm_category: Optional[str] = None
@@ -117,6 +121,7 @@ class BatchSearchItem(BaseModel):
     lecture_date: date
     batch_type: str
     uploaded_at: datetime
+
 
 class BatchSearchResponse(BaseModel):
     batches: list[BatchSearchItem]

@@ -3,11 +3,13 @@ from pydantic import BaseModel
 
 router = APIRouter()
 
+
 class UserInfoResponse(BaseModel):
     sub: str | None
     username: str | None
     email: str | None
     role: str | None
+
 
 @router.get("/me", response_model=UserInfoResponse)
 def get_current_user(request: Request):
@@ -19,5 +21,5 @@ def get_current_user(request: Request):
         sub=user.get("sub"),
         username=user.get("username"),
         email=user.get("email"),
-        role=user.get("role")
+        role=user.get("role"),
     )

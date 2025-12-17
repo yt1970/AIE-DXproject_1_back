@@ -13,7 +13,13 @@ from app.analysis.analyzer import (
     _normalize_risk_level,
     _normalize_sentiment,
 )
-from app.db.models import CategoryType, FixDifficultyType, PriorityType, RiskLevelType, SentimentType
+from app.db.models import (
+    CategoryType,
+    FixDifficultyType,
+    PriorityType,
+    RiskLevelType,
+    SentimentType,
+)
 
 
 class TestSentimentNormalization:
