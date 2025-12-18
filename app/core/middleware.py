@@ -27,18 +27,32 @@ class AuthMiddleware(BaseHTTPMiddleware):
             user_info["sub"] = oidc_identity
             if oidc_data:
                 try:
-                    # JWT payload is the second part
-                    payload_part = oidc_data.split(".")[1]
-                    # Add padding if needed
-                    payload_part += "=" * (-len(payload_part) % 4)
-                    decoded = base64.urlsafe_b64decode(payload_part)
-                    jwt_payload = json.loads(decoded)
-                    user_info["email"] = jwt_payload.get("email")
-                    user_info["username"] = jwt_payload.get(
-                        "username"
-                    ) or jwt_payload.get("cognito:username")
+                    # Format: header.payload.signature
+                    parts = oidc_data.split(".")
+                    if len(parts) > 1:
+                        payload_part = parts[1]
+                        # Add padding if needed
+                        payload_part += "=" * (-len(payload_part) % 4)
+                        decoded = base64.urlsafe_b64decode(payload_part)
+                        jwt_payload = json.loads(decoded)
+
+                        # Extract standard claims
+                        user_info["email"] = jwt_payload.get("email")
+                        # Cognito often provides 'cognito:username' or just 'username'
+                        user_info["username"] = (
+                            jwt_payload.get("username")
+                            or jwt_payload.get("cognito:username")
+                            or jwt_payload.get("email")  # Fallback to email as username
+                        )
+                        # Extract role if present (custom attribute)
+                        user_info["role"] = jwt_payload.get("custom:role") or "user"
                 except Exception as e:
                     print(f"Failed to decode OIDC data: {e}")
+                    # If decoding fails, we still have the identity (sub) from header
+                    if self.debug:
+                        import traceback
+                        traceback.print_exc()
+
         elif self.debug:
             # Local Development Mock
             user_info = {
