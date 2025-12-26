@@ -124,7 +124,9 @@ erDiagram
 
         string llm_category "カテゴリ"
 
-        string llm_importance_level "重要度"
+        string llm_priority "優先度"
+
+        string llm_fix_difficulty "修正難易度"
 
         boolean llm_is_abusive "危険かどうか"
 
