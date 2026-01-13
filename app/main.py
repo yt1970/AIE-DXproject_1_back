@@ -123,46 +123,6 @@ def create_app() -> FastAPI:
             }
         )
 
-    # ------------------------------------------------------------------
-    # ★ Logout Endpoint（prefix なし）
-    # ------------------------------------------------------------------
-    COGNITO_DOMAIN = os.getenv("COGNITO_DOMAIN")
-    COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
-    LOGOUT_REDIRECT_URI = os.getenv("LOGOUT_REDIRECT_URI")
-
-    ALB_AUTH_COOKIE_NAMES = [
-        "AWSELBAuthSessionCookie",
-        "AWSELBAuthSessionCookie-0",
-        "AWSELBAuthSessionCookie-1",
-        "AWSELBAuthSessionCookie-2",
-        "AWSELBAuthSessionCookie-3",
-    ]
-
-    @app.get("/api/logout", tags=["Auth"])
-    def logout():
-        params = {
-            "client_id": COGNITO_CLIENT_ID,
-            "logout_uri": LOGOUT_REDIRECT_URI,
-        }
-        cognito_logout_url = (
-            f"https://{COGNITO_DOMAIN}/logout?{urlencode(params)}"
-        )
-
-        response = RedirectResponse(url=cognito_logout_url, status_code=302)
-
-        for cookie_name in ALB_AUTH_COOKIE_NAMES:
-            response.set_cookie(
-                key=cookie_name,
-                value="",
-                max_age=0,
-                expires=0,
-                path="/",
-                httponly=True,
-                secure=True,
-                samesite="lax",
-            )
-
-        return response
 
     # ------------------------------------------------------------------
     # API Routers
