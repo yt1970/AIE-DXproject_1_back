@@ -91,6 +91,7 @@ class AieDxprojectBackendStack(Stack):
                 ),
                 environment={
                     "APP_ENV": "production",
+                    "DB_NAME": "postgres",
                 },
             ),
         )
