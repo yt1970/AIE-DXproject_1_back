@@ -71,17 +71,17 @@ def _populate_survey_summary(
     student_attribute: str | None = None,
 ) -> None:
     score_fields = {
-        "score_overall_satisfaction": models.SurveyResponse.score_satisfaction_overall,
-        "score_content_volume": models.SurveyResponse.score_content_volume,
-        "score_content_understanding": models.SurveyResponse.score_content_understanding,
-        "score_content_announcement": models.SurveyResponse.score_content_announcement,
-        "score_instructor_overall": models.SurveyResponse.score_instructor_overall,
-        "score_instructor_time": models.SurveyResponse.score_instructor_time,
-        "score_instructor_qa": models.SurveyResponse.score_instructor_qa,
-        "score_instructor_speaking": models.SurveyResponse.score_instructor_speaking,
-        "score_self_preparation": models.SurveyResponse.score_self_preparation,
-        "score_self_motivation": models.SurveyResponse.score_self_motivation,
-        "score_self_future": models.SurveyResponse.score_self_future,
+        "avg_satisfaction_overall": models.SurveyResponse.score_satisfaction_overall,
+        "avg_content_volume": models.SurveyResponse.score_content_volume,
+        "avg_content_understanding": models.SurveyResponse.score_content_understanding,
+        "avg_content_announcement": models.SurveyResponse.score_content_announcement,
+        "avg_instructor_overall": models.SurveyResponse.score_instructor_overall,
+        "avg_instructor_time": models.SurveyResponse.score_instructor_time,
+        "avg_instructor_qa": models.SurveyResponse.score_instructor_qa,
+        "avg_instructor_speaking": models.SurveyResponse.score_instructor_speaking,
+        "avg_self_preparation": models.SurveyResponse.score_self_preparation,
+        "avg_self_motivation": models.SurveyResponse.score_self_motivation,
+        "avg_self_future": models.SurveyResponse.score_self_future,
     }
 
     aggregates = (

@@ -57,8 +57,11 @@ def analyze_and_store_comments(
     score_column_map = {
         "本日の総合的な満足度を５段階で教えてください。": "score_satisfaction_overall",
         "本日の講義内容について５段階で教えてください。\n学習量は適切だった": "score_content_volume",
+        "本日の講義内容について５段階で教えてください。 \n学習量は適切だった": "score_content_volume",
         "本日の講義内容について５段階で教えてください。\n講義内容が十分に理解できた": "score_content_understanding",
+        "本日の講義内容について５段階で教えてください。 \n講義内容が十分に理解できた": "score_content_understanding",
         "本日の講義内容について５段階で教えてください。\n運営側のアナウンスが適切だった": "score_content_announcement",
+        "本日の講義内容について５段階で教えてください。 \n運営側のアナウンスが適切だった": "score_content_announcement",
         "本日の講師の総合的な満足度を５段階で教えてください。": "score_instructor_overall",
         "本日の講師について５段階で教えてください。\n授業時間を効率的に使っていた": "score_instructor_time",
         "本日の講師について５段階で教えてください。\n質問に丁寧に対応してくれた": "score_instructor_qa",
@@ -66,6 +69,7 @@ def analyze_and_store_comments(
         "ご自身について５段階で教えてください。\n事前に予習をした": "score_self_preparation",
         "ご自身について５段階で教えてください。\n意欲をもって講義に臨んだ": "score_self_motivation",
         "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に生かせる": "score_self_future",
+        "ご自身について５段階で教えてください。\n今回学んだことを学習や研究に活かせる": "score_self_future",
         "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_friend",
     }
 
@@ -89,8 +93,31 @@ def analyze_and_store_comments(
             "student_attribute": student_attribute or "ALL",
         }
         for col_name, attr_name in score_column_map.items():
-            if col_name in row and row[col_name] and row[col_name].isdigit():
-                survey_response_data[attr_name] = int(row[col_name])
+            if col_name in row and row[col_name]:
+                val = row[col_name].strip()
+                # "5.0"などの小数点付き文字列に対応するため float -> int 変換を行う
+                try:
+                    f_val = float(val)
+                    survey_response_data[attr_name] = int(f_val)
+                except ValueError:
+                    # 数値としてパースできない場合はスキップ
+                    pass
+
+        # 必須スコア項目が揃っているか確認
+        required_attrs = set(score_column_map.values())
+        existing_attrs = set(survey_response_data.keys())
+        missing_attrs = required_attrs - existing_attrs
+        
+        # survey_batch_id, account_id, student_attribute は除去 (score_column_mapに含まれないため)
+        # ただし required_attrs は score_column_map の value のみなのでOK
+        
+        if missing_attrs:
+            logger.warning(
+                "Skipping row %d due to missing required score fields: %s",
+                row_index,
+                missing_attrs,
+            )
+            continue
 
         # score_recommend_friendをそのまま保持
 
