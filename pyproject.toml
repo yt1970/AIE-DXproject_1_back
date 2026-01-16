@@ -1,6 +1,35 @@
+[project]
+name = "aie-dxproject-1-back"
+version = "0.1.0"
+description = "AIE DX Project 1 Backend"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.13.1",
+    "boto3>=1.42.29",
+    "celery>=5.6.2",
+    "fastapi>=0.110.0",
+    "httpx>=0.27.0",
+    "psycopg2-binary>=2.9.11",
+    "pydantic>=2.12.3",
+    "pydantic-settings>=2.6.1",
+    "python-dotenv>=1.2.1",
+    "python-multipart>=0.0.21",
+    "redis>=5.3.1",
+    "sqlalchemy>=2.0.45",
+    "uvicorn[standard]>=0.29.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=25.12.0",
+    "isort>=7.0.0",
+    "pytest>=9.0.2",
+]
+
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py313"]
 extend-exclude = '''
 (
   ^\.git
@@ -13,8 +42,6 @@ line_length = 88
 src_paths = ["."]
 known_first_party = ["app"]
 skip_gitignore = true
-
-
 
 [tool.pytest.ini_options]
 addopts = "-q"
