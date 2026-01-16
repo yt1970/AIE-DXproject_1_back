@@ -89,7 +89,7 @@ def _populate_survey_summary(
         .one()
     )
 
-    for (field_name, _), value in zip(score_fields.items(), aggregates, strict=True):
+    for (field_name, _), value in zip(score_fields.items(), aggregates[:-1], strict=True):
         setattr(summary, field_name, _maybe_round(value))
 
     responses_count = aggregates[-1]
