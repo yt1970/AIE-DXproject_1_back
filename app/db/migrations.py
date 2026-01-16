@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import List, Sequence, Set
+from collections.abc import Sequence
 
 from sqlalchemy import (
-    TIMESTAMP,
     Boolean,
     Column,
-    Float,
     ForeignKey,
     Integer,
     MetaData,
@@ -43,42 +41,32 @@ def apply_migrations(engine: Engine) -> None:
 
     if "survey_response" in table_names and "survey_responses" not in table_names:
         with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE survey_response RENAME TO survey_responses")
-            )
+            connection.execute(text("ALTER TABLE survey_response RENAME TO survey_responses"))
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
     if "response_comment" in table_names and "response_comments" not in table_names:
         with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE response_comment RENAME TO response_comments")
-            )
+            connection.execute(text("ALTER TABLE response_comment RENAME TO response_comments"))
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
     if "survey_summary" in table_names and "survey_summaries" not in table_names:
         with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE survey_summary RENAME TO survey_summaries")
-            )
+            connection.execute(text("ALTER TABLE survey_summary RENAME TO survey_summaries"))
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
     if "comment_summary" in table_names and "comment_summaries" not in table_names:
         with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE comment_summary RENAME TO comment_summaries")
-            )
+            connection.execute(text("ALTER TABLE comment_summary RENAME TO comment_summaries"))
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
     # survey_batch -> survey_batches リネーム、テーブルが無ければ作成
     if "survey_batch" in table_names and "survey_batches" not in table_names:
         with engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE survey_batch RENAME TO survey_batches")
-            )
+            connection.execute(text("ALTER TABLE survey_batch RENAME TO survey_batches"))
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
 
@@ -87,29 +75,20 @@ def apply_migrations(engine: Engine) -> None:
         inspector = inspect(engine)
         table_names = inspector.get_table_names()
     else:
-        survey_batch_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("survey_batches")
-        }
+        survey_batch_columns: set[str] = {column["name"] for column in inspector.get_columns("survey_batches")}
         _apply_statements(
             engine,
             _build_survey_batch_migrations(survey_batch_columns),
             table="survey_batches",
         )
         inspector = inspect(engine)
-        survey_batch_columns = {
-            column["name"] for column in inspector.get_columns("survey_batches")
-        }
-        if (
-            "upload_timestamp" in survey_batch_columns
-            and engine.dialect.name == "sqlite"
-        ):
+        survey_batch_columns = {column["name"] for column in inspector.get_columns("survey_batches")}
+        if "upload_timestamp" in survey_batch_columns and engine.dialect.name == "sqlite":
             _rebuild_survey_batches_without_upload_timestamp(engine)
 
     # SurveyResponseテーブルのマイグレーションを適用
     if "survey_responses" in table_names:
-        survey_response_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("survey_responses")
-        }
+        survey_response_columns: set[str] = {column["name"] for column in inspector.get_columns("survey_responses")}
         _apply_statements(
             engine,
             _build_survey_response_migrations(survey_response_columns),
@@ -118,29 +97,21 @@ def apply_migrations(engine: Engine) -> None:
 
     # Commentテーブルのマイグレーションを適用し新名称をresponse_commentとする
     if "response_comments" in table_names:
-        comment_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("response_comments")
-        }
+        comment_columns: set[str] = {column["name"] for column in inspector.get_columns("response_comments")}
         _apply_statements(
             engine,
             _build_response_comment_migrations(comment_columns),
             table="response_comments",
         )
     elif "comment" in table_names:
-        comment_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("comment")
-        }
+        comment_columns: set[str] = {column["name"] for column in inspector.get_columns("comment")}
         if _requires_comment_rebuild(comment_columns):
             _rebuild_comment_table(engine, comment_columns)
             inspector = inspect(engine)
-            comment_columns = {
-                column["name"] for column in inspector.get_columns("comment")
-            }
+            comment_columns = {column["name"] for column in inspector.get_columns("comment")}
         _rename_comment_table(engine)
         inspector = inspect(engine)
-        comment_columns = {
-            column["name"] for column in inspector.get_columns("response_comments")
-        }
+        comment_columns = {column["name"] for column in inspector.get_columns("response_comments")}
         _apply_statements(
             engine,
             _build_response_comment_migrations(comment_columns),
@@ -160,9 +131,7 @@ def apply_migrations(engine: Engine) -> None:
     if "lectures" not in table_names:
         _create_lecture_table(engine)
     else:
-        lecture_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("lectures")
-        }
+        lecture_columns: set[str] = {column["name"] for column in inspector.get_columns("lectures")}
         _apply_statements(
             engine,
             _build_lecture_migrations(lecture_columns),
@@ -175,18 +144,11 @@ def apply_migrations(engine: Engine) -> None:
     if "survey_summaries" not in table_names:
         _create_survey_summary_table(engine)
     else:
-        survey_summary_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("survey_summaries")
-        }
-        if (
-            "created_at" not in survey_summary_columns
-            or "student_attribute" not in survey_summary_columns
-        ):
+        survey_summary_columns: set[str] = {column["name"] for column in inspector.get_columns("survey_summaries")}
+        if "created_at" not in survey_summary_columns or "student_attribute" not in survey_summary_columns:
             _recreate_survey_summary_table(engine)
             inspector = inspect(engine)
-            survey_summary_columns = {
-                column["name"] for column in inspector.get_columns("survey_summaries")
-            }
+            survey_summary_columns = {column["name"] for column in inspector.get_columns("survey_summaries")}
         _apply_statements(
             engine,
             _build_survey_summary_migrations(survey_summary_columns),
@@ -196,24 +158,17 @@ def apply_migrations(engine: Engine) -> None:
     if "comment_summaries" not in table_names:
         _create_comment_summary_table(engine)
     else:
-        comment_summary_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("comment_summaries")
-        }
+        comment_summary_columns: set[str] = {column["name"] for column in inspector.get_columns("comment_summaries")}
         legacy_cols = {
             "sentiment_positive",
             "category_lecture_content",
             "importance_low",
             "comments_count",
         }
-        if (
-            legacy_cols & comment_summary_columns
-            or "analysis_type" not in comment_summary_columns
-        ):
+        if legacy_cols & comment_summary_columns or "analysis_type" not in comment_summary_columns:
             _recreate_comment_summary_table(engine)
             inspector = inspect(engine)
-            comment_summary_columns = {
-                column["name"] for column in inspector.get_columns("comment_summaries")
-            }
+            comment_summary_columns = {column["name"] for column in inspector.get_columns("comment_summaries")}
         _apply_statements(
             engine,
             _build_comment_summary_migrations(comment_summary_columns),
@@ -223,20 +178,16 @@ def apply_migrations(engine: Engine) -> None:
     if "score_distributions" not in table_names:
         _create_score_distribution_table(engine)
     else:
-        dist_columns: Set[str] = {
-            column["name"] for column in inspector.get_columns("score_distributions")
-        }
+        dist_columns: set[str] = {column["name"] for column in inspector.get_columns("score_distributions")}
         if "question_key" not in dist_columns and "metric_key" in dist_columns:
             _apply_statements(
                 engine,
-                [
-                    "ALTER TABLE score_distributions RENAME COLUMN metric_key TO question_key"
-                ],
+                ["ALTER TABLE score_distributions RENAME COLUMN metric_key TO question_key"],
                 table="score_distributions",
             )
 
 
-def _apply_statements(engine: Engine, statements: List[str], *, table: str) -> None:
+def _apply_statements(engine: Engine, statements: list[str], *, table: str) -> None:
     if not statements:
         logger.debug("No schema migrations required for table '%s'.", table)
         return
@@ -246,18 +197,14 @@ def _apply_statements(engine: Engine, statements: List[str], *, table: str) -> N
             logger.info("Applying migration: %s", statement)
             connection.execute(text(statement))
 
-    logger.info(
-        "Applied %d migration statements for table '%s'.", len(statements), table
-    )
+    logger.info("Applied %d migration statements for table '%s'.", len(statements), table)
 
 
 def _rebuild_survey_batches_without_upload_timestamp(engine: Engine) -> None:
     """SQLite向けにsurvey_batchesのupload_timestampを除去して再作成する。"""
     with engine.begin() as connection:
         connection.execute(text("PRAGMA foreign_keys=OFF"))
-        connection.execute(
-            text("ALTER TABLE survey_batches RENAME TO survey_batches__old")
-        )
+        connection.execute(text("ALTER TABLE survey_batches RENAME TO survey_batches__old"))
         connection.execute(
             text(
                 """
@@ -288,9 +235,9 @@ def _rebuild_survey_batches_without_upload_timestamp(engine: Engine) -> None:
         connection.execute(text("PRAGMA foreign_keys=ON"))
 
 
-def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
+def _build_comment_migrations(existing_columns: set[str]) -> list[str]:
     """不足カラム向けのALTER TABLE文を生成する。"""
-    statements: List[str] = []
+    statements: list[str] = []
 
     if "account_id" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN account_id VARCHAR(255)")
@@ -302,9 +249,7 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE comment ADD COLUMN question_text TEXT")
 
     if "response_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE comment ADD COLUMN response_id INTEGER REFERENCES survey_responses(id)"
-        )
+        statements.append("ALTER TABLE comment ADD COLUMN response_id INTEGER REFERENCES survey_responses(id)")
 
     if "comment_text" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN comment_text TEXT")
@@ -313,9 +258,7 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE comment ADD COLUMN llm_priority VARCHAR(20)")
 
     if "llm_fix_difficulty" not in existing_columns:
-        statements.append(
-            "ALTER TABLE comment ADD COLUMN llm_fix_difficulty VARCHAR(20)"
-        )
+        statements.append("ALTER TABLE comment ADD COLUMN llm_fix_difficulty VARCHAR(20)")
 
     if "llm_importance_score" not in existing_columns:
         statements.append("ALTER TABLE comment ADD COLUMN llm_importance_score FLOAT")
@@ -329,9 +272,9 @@ def _build_comment_migrations(existing_columns: Set[str]) -> List[str]:
     return statements
 
 
-def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
+def _build_survey_response_migrations(existing_columns: set[str]) -> list[str]:
     """survey_response向けALTER TABLE文を生成する。"""
-    statements: List[str] = []
+    statements: list[str] = []
 
     if "survey_batch_id" not in existing_columns:
         statements.append(
@@ -342,13 +285,9 @@ def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE survey_responses ADD COLUMN row_index INTEGER")
 
     if "student_attribute" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_responses ADD COLUMN student_attribute VARCHAR(50) NOT NULL"
-        )
+        statements.append("ALTER TABLE survey_responses ADD COLUMN student_attribute VARCHAR(50) NOT NULL")
     else:
-        statements.append(
-            "ALTER TABLE survey_responses ALTER COLUMN student_attribute SET NOT NULL"
-        )
+        statements.append("ALTER TABLE survey_responses ALTER COLUMN student_attribute SET NOT NULL")
 
     # 本番用CSVの全数値評価カラムを追加
     new_score_columns = {
@@ -371,62 +310,42 @@ def _build_survey_response_migrations(existing_columns: Set[str]) -> List[str]:
 
     for col, col_type in new_score_columns.items():
         if col not in existing_columns:
-            statements.append(
-                f"ALTER TABLE survey_responses ADD COLUMN {col} {col_type}"
-            )
+            statements.append(f"ALTER TABLE survey_responses ADD COLUMN {col} {col_type}")
     if "score_recommend_to_friend" in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_responses DROP COLUMN score_recommend_to_friend"
-        )
+        statements.append("ALTER TABLE survey_responses DROP COLUMN score_recommend_to_friend")
 
     return statements
 
 
-def _build_survey_batch_migrations(existing_columns: Set[str]) -> List[str]:
-    statements: List[str] = []
+def _build_survey_batch_migrations(existing_columns: set[str]) -> list[str]:
+    statements: list[str] = []
     if "lecture_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_batches ADD COLUMN lecture_id INTEGER NOT NULL REFERENCES lectures(id)"
-        )
+        statements.append("ALTER TABLE survey_batches ADD COLUMN lecture_id INTEGER NOT NULL REFERENCES lectures(id)")
     if "batch_type" not in existing_columns:
         statements.append(
             "ALTER TABLE survey_batches ADD COLUMN batch_type VARCHAR(20) DEFAULT 'preliminary' NOT NULL"
         )
     if "zoom_participants" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_batches ADD COLUMN zoom_participants INTEGER"
-        )
+        statements.append("ALTER TABLE survey_batches ADD COLUMN zoom_participants INTEGER")
     if "recording_views" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_batches ADD COLUMN recording_views INTEGER"
-        )
+        statements.append("ALTER TABLE survey_batches ADD COLUMN recording_views INTEGER")
     if "uploaded_at" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_batches ADD COLUMN uploaded_at TIMESTAMP NOT NULL"
-        )
+        statements.append("ALTER TABLE survey_batches ADD COLUMN uploaded_at TIMESTAMP NOT NULL")
     return statements
 
 
-def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
-    statements: List[str] = []
+def _build_response_comment_migrations(existing_columns: set[str]) -> list[str]:
+    statements: list[str] = []
 
     # 旧commentテーブル由来のカラムが改名後に不足している可能性を考慮する
     if "account_id" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN account_id VARCHAR(255)"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN account_id VARCHAR(255)")
     if "account_name" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN account_name VARCHAR(255)"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN account_name VARCHAR(255)")
     if "question_type" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN question_type VARCHAR(50) NOT NULL"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN question_type VARCHAR(50) NOT NULL")
     else:
-        statements.append(
-            "ALTER TABLE response_comments ALTER COLUMN question_type SET NOT NULL"
-        )
+        statements.append("ALTER TABLE response_comments ALTER COLUMN question_type SET NOT NULL")
     if "question_text" not in existing_columns:
         statements.append("ALTER TABLE response_comments ADD COLUMN question_text TEXT")
     if "response_id" not in existing_columns:
@@ -437,84 +356,58 @@ def _build_response_comment_migrations(existing_columns: Set[str]) -> List[str]:
         statements.append("ALTER TABLE response_comments ADD COLUMN comment_text TEXT")
     if "llm_priority" not in existing_columns:
         if "llm_importance_level" in existing_columns:
-            statements.append(
-                "ALTER TABLE response_comments RENAME COLUMN llm_importance_level TO llm_priority"
-            )
+            statements.append("ALTER TABLE response_comments RENAME COLUMN llm_importance_level TO llm_priority")
         else:
-            statements.append(
-                "ALTER TABLE response_comments ADD COLUMN llm_priority VARCHAR(20)"
-            )
+            statements.append("ALTER TABLE response_comments ADD COLUMN llm_priority VARCHAR(20)")
 
     if "llm_fix_difficulty" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN llm_fix_difficulty VARCHAR(20)"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN llm_fix_difficulty VARCHAR(20)")
 
     if "llm_importance_score" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN llm_importance_score FLOAT"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN llm_importance_score FLOAT")
     if "llm_risk_level" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN llm_risk_level VARCHAR(20)"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN llm_risk_level VARCHAR(20)")
     if "llm_is_abusive" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN llm_is_abusive BOOLEAN"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN llm_is_abusive BOOLEAN")
     if "is_analyzed" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN is_analyzed BOOLEAN"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN is_analyzed BOOLEAN")
     if "analysis_version" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN analysis_version VARCHAR(20)"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN analysis_version VARCHAR(20)")
 
     if "survey_batch_id" not in existing_columns:
         statements.append(
             "ALTER TABLE response_comments ADD COLUMN survey_batch_id INTEGER REFERENCES survey_batches(id)"
         )
     if "is_important" not in existing_columns:
-        statements.append(
-            "ALTER TABLE response_comments ADD COLUMN is_important INTEGER"
-        )
+        statements.append("ALTER TABLE response_comments ADD COLUMN is_important INTEGER")
 
     return statements
 
 
-def _build_comment_summary_migrations(existing_columns: Set[str]) -> List[str]:
-    statements: List[str] = []
+def _build_comment_summary_migrations(existing_columns: set[str]) -> list[str]:
+    statements: list[str] = []
     if "student_attribute" not in existing_columns:
-        statements.append(
-            "ALTER TABLE comment_summaries ADD COLUMN student_attribute VARCHAR(50) DEFAULT 'ALL'"
-        )
+        statements.append("ALTER TABLE comment_summaries ADD COLUMN student_attribute VARCHAR(50) DEFAULT 'ALL'")
     if "analysis_type" not in existing_columns:
-        statements.append(
-            "ALTER TABLE comment_summaries ADD COLUMN analysis_type VARCHAR(20)"
-        )
+        statements.append("ALTER TABLE comment_summaries ADD COLUMN analysis_type VARCHAR(20)")
     if "label" not in existing_columns:
         statements.append("ALTER TABLE comment_summaries ADD COLUMN label VARCHAR(50)")
     if "count" not in existing_columns:
         statements.append("ALTER TABLE comment_summaries ADD COLUMN count INTEGER")
     if "created_at" not in existing_columns:
-        statements.append(
-            "ALTER TABLE comment_summaries ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
+        statements.append("ALTER TABLE comment_summaries ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     return statements
 
 
-def _build_survey_summary_migrations(existing_columns: Set[str]) -> List[str]:
-    statements: List[str] = []
+def _build_survey_summary_migrations(existing_columns: set[str]) -> list[str]:
+    statements: list[str] = []
     if "created_at" not in existing_columns:
-        statements.append(
-            "ALTER TABLE survey_summaries ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
+        statements.append("ALTER TABLE survey_summaries ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     return statements
 
 
-def _build_lecture_migrations(existing_columns: Set[str]) -> List[str]:
-    statements: List[str] = []
+def _build_lecture_migrations(existing_columns: set[str]) -> list[str]:
+    statements: list[str] = []
     if "term" not in existing_columns:
         statements.append("ALTER TABLE lectures ADD COLUMN term VARCHAR(50)")
         statements.append("UPDATE lectures SET term = period WHERE term IS NULL")
@@ -526,23 +419,17 @@ def _build_lecture_migrations(existing_columns: Set[str]) -> List[str]:
     if "lecture_on" not in existing_columns:
         statements.append("ALTER TABLE lectures ADD COLUMN lecture_on DATE")
     if "instructor_name" not in existing_columns:
-        statements.append(
-            "ALTER TABLE lectures ADD COLUMN instructor_name VARCHAR(255)"
-        )
+        statements.append("ALTER TABLE lectures ADD COLUMN instructor_name VARCHAR(255)")
     if "description" not in existing_columns:
         statements.append("ALTER TABLE lectures ADD COLUMN description TEXT")
     if "created_at" not in existing_columns:
-        statements.append(
-            "ALTER TABLE lectures ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
+        statements.append("ALTER TABLE lectures ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     if "updated_at" not in existing_columns:
-        statements.append(
-            "ALTER TABLE lectures ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
-        )
+        statements.append("ALTER TABLE lectures ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     return statements
 
 
-def _requires_comment_rebuild(existing_columns: Set[str]) -> bool:
+def _requires_comment_rebuild(existing_columns: set[str]) -> bool:
     legacy_columns = {"student_id", "comment_learned_raw", "comment_improvements_raw"}
     if legacy_columns & existing_columns:
         return True
@@ -551,7 +438,7 @@ def _requires_comment_rebuild(existing_columns: Set[str]) -> bool:
     return False
 
 
-def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
+def _rebuild_comment_table(engine: Engine, existing_columns: set[str]) -> None:
     logger.info("Rebuilding legacy 'comment' table to new schema.")
     metadata = MetaData()
     old_comment = Table("comment", metadata, autoload_with=engine)
@@ -560,9 +447,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         "comment__new",
         metadata,
         Column("id", Integer, primary_key=True, autoincrement=True),
-        Column(
-            "response_id", Integer, ForeignKey("survey_responses.id"), nullable=False
-        ),
+        Column("response_id", Integer, ForeignKey("survey_responses.id"), nullable=False),
         Column("question_type", String(50), nullable=False),
         Column("comment_text", Text, nullable=False),
         Column("llm_category", String(50)),
@@ -621,7 +506,7 @@ def _rebuild_comment_table(engine: Engine, existing_columns: Set[str]) -> None:
         connection.execute(text("ALTER TABLE comment__new RENAME TO response_comments"))
 
 
-def _safe_column(table: Table, column_name: str, existing_columns: Set[str]):
+def _safe_column(table: Table, column_name: str, existing_columns: set[str]):
     if column_name in existing_columns:
         return table.c[column_name]
     return literal(None).label(column_name)

@@ -1,4 +1,3 @@
-import json
 from datetime import date, datetime
 from pathlib import Path
 
@@ -33,16 +32,12 @@ def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     configure_celery_app()
 
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models.Base.metadata.create_all(engine)
 
     monkeypatch.setattr(session_module, "engine", engine, raising=False)
-    monkeypatch.setattr(
-        session_module, "SessionLocal", TestingSessionLocal, raising=False
-    )
+    monkeypatch.setattr(session_module, "SessionLocal", TestingSessionLocal, raising=False)
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -76,9 +71,7 @@ def _create_dummy_data(db, name, year, term, session, score_base):
     db.add(lec)
     db.flush()
 
-    batch = models.SurveyBatch(
-        lecture_id=lec.id, batch_type="confirmed", uploaded_at=datetime.now()
-    )
+    batch = models.SurveyBatch(lecture_id=lec.id, batch_type="confirmed", uploaded_at=datetime.now())
     db.add(batch)
     db.flush()
 
@@ -138,11 +131,7 @@ def test_compare_years(client):
     # Check difference
     # Find overall_satisfaction in score_comparison
     item = next(
-        (
-            i
-            for i in data["score_comparison"]
-            if i["category_key"] == "overall_satisfaction"
-        ),
+        (i for i in data["score_comparison"] if i["category_key"] == "overall_satisfaction"),
         None,
     )
     assert item is not None

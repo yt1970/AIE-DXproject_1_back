@@ -4,7 +4,7 @@ import json
 import textwrap
 from datetime import UTC, date, datetime
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 import pytest
 from sqlalchemy import create_engine
@@ -45,22 +45,22 @@ def fixture_db_session(tmp_path: Path) -> Session:
 # LLM client tests
 # ---------------------------------------------------------------------------
 class _DummyResponse:
-    def __init__(self, payload: Dict[str, Any]) -> None:
+    def __init__(self, payload: dict[str, Any]) -> None:
         self._payload = payload
 
     def raise_for_status(self) -> None:
         return None
 
-    def json(self) -> Dict[str, Any]:
+    def json(self) -> dict[str, Any]:
         return self._payload
 
 
 class _DummyClient:
-    def __init__(self, *, expected_payload: Dict[str, Any]) -> None:
+    def __init__(self, *, expected_payload: dict[str, Any]) -> None:
         self.expected_payload = expected_payload
-        self.captured_request: Dict[str, Any] | None = None
+        self.captured_request: dict[str, Any] | None = None
 
-    def __enter__(self) -> "_DummyClient":
+    def __enter__(self) -> _DummyClient:
         return self
 
     def __exit__(self, *args: Any) -> None:
@@ -70,9 +70,9 @@ class _DummyClient:
         self,
         url: str,
         *,
-        json: Dict[str, Any],
-        headers: Dict[str, str],
-        params: Dict[str, str],
+        json: dict[str, Any],
+        headers: dict[str, str],
+        params: dict[str, str],
     ) -> _DummyResponse:
         self.captured_request = {
             "url": url,
@@ -98,9 +98,7 @@ def test_llm_client_requires_comment_text() -> None:
         ("full_analysis", {"summary": "mock"}),
     ],
 )
-def test_llm_client_mock_provider_deterministic(
-    analysis_type: str, expected: Dict[str, Any]
-) -> None:
+def test_llm_client_mock_provider_deterministic(analysis_type: str, expected: dict[str, Any]) -> None:
     client = LLMClient(config=LLMClientConfig(provider="mock"))
     result = client.analyze_comment("コメント", analysis_type=analysis_type)
     for key, value in expected.items():
@@ -180,16 +178,12 @@ def test_split_s3_uri_validation() -> None:
     with pytest.raises(StorageError):
         _split_s3_uri("invalid://bucket/key", default_bucket="fallback")
 
-    bucket, key = _split_s3_uri(
-        "s3://bucket-name/path/to.txt", default_bucket="fallback"
-    )
+    bucket, key = _split_s3_uri("s3://bucket-name/path/to.txt", default_bucket="fallback")
     assert bucket == "bucket-name"
     assert key == "path/to.txt"
 
 
-def test_get_storage_client_local_backend(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_get_storage_client_local_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UPLOAD_BACKEND", "local")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(tmp_path))
     settings_module.get_settings.cache_clear()
@@ -319,7 +313,7 @@ class _DummyAnalysis:
         self.risk_level_normalized = _DummyEnum("low")
         self.sentiment_normalized = _DummyEnum(sentiment_value)
         self.is_abusive = False
-        self.warnings: List[str] = []
+        self.warnings: list[str] = []
 
 
 def _create_upload_entities(
@@ -352,16 +346,12 @@ def test_validate_csv_requires_comment_columns() -> None:
         upload_pipeline.validate_csv_or_raise(b"header1,header2\nvalue1,value2\n")
 
 
-def test_analyze_and_store_comments(
-    db_session: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_analyze_and_store_comments(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     batch = _create_upload_entities(db_session)
 
-    calls: List[bool] = []
+    calls: list[bool] = []
 
-    def _fake_analyze_comment(
-        comment_text: str, *, skip_llm_analysis: bool, **kwargs: Any
-    ):
+    def _fake_analyze_comment(comment_text: str, *, skip_llm_analysis: bool, **kwargs: Any):
         calls.append(skip_llm_analysis)
         priority = "low" if skip_llm_analysis else "high"
         sentiment = "neutral" if skip_llm_analysis else "positive"
@@ -377,12 +367,10 @@ def test_analyze_and_store_comments(
             """
     ).encode("utf-8")
 
-    total_comments, processed_comments, total_responses = (
-        upload_pipeline.analyze_and_store_comments(
-            db=db_session,
-            survey_batch=batch,
-            content_bytes=csv_content,
-        )
+    total_comments, processed_comments, total_responses = upload_pipeline.analyze_and_store_comments(
+        db=db_session,
+        survey_batch=batch,
+        content_bytes=csv_content,
     )
 
     assert total_responses == 2

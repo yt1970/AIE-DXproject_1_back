@@ -2,6 +2,7 @@
 """
 正規化ロジックのテストを実行するスクリプト
 """
+
 import sys
 
 sys.path.insert(0, "/app")
@@ -28,35 +29,25 @@ def test_sentiment_normalization():
 
     # positive
     assert _normalize_sentiment("positive") == SentimentType.positive, "positive failed"
-    assert (
-        _normalize_sentiment("POSITIVE") == SentimentType.positive
-    ), "POSITIVE (uppercase) failed"
+    assert _normalize_sentiment("POSITIVE") == SentimentType.positive, "POSITIVE (uppercase) failed"
 
     # negative
     assert _normalize_sentiment("negative") == SentimentType.negative, "negative failed"
-    assert (
-        _normalize_sentiment("Negative") == SentimentType.negative
-    ), "Negative (mixed case) failed"
+    assert _normalize_sentiment("Negative") == SentimentType.negative, "Negative (mixed case) failed"
 
     # neutral
     assert _normalize_sentiment("neutral") == SentimentType.neutral, "neutral failed"
 
     # Japanese
-    assert (
-        _normalize_sentiment("ポジティブ") == SentimentType.positive
-    ), "ポジティブ failed"
-    assert (
-        _normalize_sentiment("ネガティブ") == SentimentType.negative
-    ), "ネガティブ failed"
+    assert _normalize_sentiment("ポジティブ") == SentimentType.positive, "ポジティブ failed"
+    assert _normalize_sentiment("ネガティブ") == SentimentType.negative, "ネガティブ failed"
 
     # Empty/None
     assert _normalize_sentiment("") == SentimentType.neutral, "empty string failed"
     assert _normalize_sentiment(None) == SentimentType.neutral, "None failed"
 
     # Unknown
-    assert (
-        _normalize_sentiment("unknown") == SentimentType.neutral
-    ), "unknown value failed"
+    assert _normalize_sentiment("unknown") == SentimentType.neutral, "unknown value failed"
 
     print("✅ All sentiment normalization tests passed!")
 
@@ -88,9 +79,7 @@ def test_priority_normalization():
     assert _normalize_priority("high") == PriorityType.high, "high failed"
     assert _normalize_priority("HIGH") == PriorityType.high, "HIGH (uppercase) failed"
     assert _normalize_priority("medium") == PriorityType.medium, "medium failed"
-    assert (
-        _normalize_priority("Medium") == PriorityType.medium
-    ), "Medium (mixed case) failed"
+    assert _normalize_priority("Medium") == PriorityType.medium, "Medium (mixed case) failed"
     assert _normalize_priority("low") == PriorityType.low, "low failed"
 
     # Empty/None -> None (DB 上は NULL として扱う)
@@ -108,13 +97,9 @@ def test_fix_difficulty_normalization():
     print("Testing fix_difficulty normalization...")
 
     assert _normalize_fix_difficulty("easy") == FixDifficultyType.easy, "easy failed"
-    assert (
-        _normalize_fix_difficulty("EASY") == FixDifficultyType.easy
-    ), "EASY (uppercase) failed"
+    assert _normalize_fix_difficulty("EASY") == FixDifficultyType.easy, "EASY (uppercase) failed"
     assert _normalize_fix_difficulty("hard") == FixDifficultyType.hard, "hard failed"
-    assert (
-        _normalize_fix_difficulty("Hard") == FixDifficultyType.hard
-    ), "Hard (mixed case) failed"
+    assert _normalize_fix_difficulty("Hard") == FixDifficultyType.hard, "Hard (mixed case) failed"
     assert _normalize_fix_difficulty("none") == FixDifficultyType.none, "none failed"
 
     # Empty/None -> None (DB 上は NULL として扱う)
@@ -132,22 +117,16 @@ def test_risk_level_normalization():
     print("Testing risk level normalization...")
 
     assert _normalize_risk_level("Flag") == RiskLevelType.flag, "Flag failed"
-    assert (
-        _normalize_risk_level("flag") == RiskLevelType.flag
-    ), "flag (lowercase) failed"
+    assert _normalize_risk_level("flag") == RiskLevelType.flag, "flag (lowercase) failed"
     assert _normalize_risk_level("Safe") == RiskLevelType.safe, "Safe failed"
-    assert (
-        _normalize_risk_level("SAFE") == RiskLevelType.safe
-    ), "SAFE (uppercase) failed"
+    assert _normalize_risk_level("SAFE") == RiskLevelType.safe, "SAFE (uppercase) failed"
 
     # Empty/None
     assert _normalize_risk_level("") == RiskLevelType.other, "empty string failed"
     assert _normalize_risk_level(None) == RiskLevelType.other, "None failed"
 
     # Unknown
-    assert (
-        _normalize_risk_level("unknown") == RiskLevelType.other
-    ), "unknown value failed"
+    assert _normalize_risk_level("unknown") == RiskLevelType.other, "unknown value failed"
 
     print("✅ All risk level normalization tests passed!")
 

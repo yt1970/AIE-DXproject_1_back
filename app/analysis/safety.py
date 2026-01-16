@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Optional
-
 from app.services import LLMAnalysisResult
 
 
@@ -19,7 +17,7 @@ def is_comment_safe(comment_text: str, llm_output: LLMAnalysisResult) -> bool:
     return True
 
 
-def get_higher_risk_level(level1: Optional[str], level2: Optional[str]) -> str:
+def get_higher_risk_level(level1: str | None, level2: str | None) -> str:
     """2つのリスクレベルを比較し、より高い方を返す。"""
     order = {"none": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
     level1_norm = (level1 or "none").lower()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import pytest
 
@@ -42,7 +41,7 @@ def test_aws_credentials_projection(monkeypatch: pytest.MonkeyPatch) -> None:
 
     settings = settings_module.get_settings()
 
-    expected: Dict[str, str] = {
+    expected: dict[str, str] = {
         "access_key_id": "test-access",
         "secret_access_key": "test-secret",
         "region": "ap-northeast-1",
@@ -51,9 +50,7 @@ def test_aws_credentials_projection(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.aws_credentials == expected
 
 
-def test_storage_settings_defaults(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_storage_settings_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     uploads_dir = tmp_path / "uploads"
     monkeypatch.setenv("UPLOAD_BACKEND", "LOCAL")
     monkeypatch.setenv("UPLOAD_LOCAL_DIRECTORY", str(uploads_dir))

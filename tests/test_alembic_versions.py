@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from alembic.config import Config
 from sqlalchemy import create_engine, inspect
 
 from alembic import command
-from alembic.config import Config
 from app.core import settings as settings_module
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

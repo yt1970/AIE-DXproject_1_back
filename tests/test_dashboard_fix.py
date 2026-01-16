@@ -1,6 +1,5 @@
 from datetime import date, datetime
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.db import models
@@ -129,13 +128,13 @@ def test_dashboard_per_lecture_success(client: TestClient):
     assert "lectures" in data
     assert len(data["lectures"]) == 2
 
-    l1 = next(l for l in data["lectures"] if l["lecture_number"] == "第1回")
+    l1 = next(lec for lec in data["lectures"] if lec["lecture_number"] == "第1回")
     assert l1["nps"]["score"] == 20.0
     assert l1["scores"]["overall_satisfaction"] == 4.5
     assert "fix_difficulty" in l1
     assert "easy" in l1["fix_difficulty"]
     assert "hard" in l1["fix_difficulty"]
 
-    l2 = next(l for l in data["lectures"] if l["lecture_number"] == "第2回")
+    l2 = next(lec for lec in data["lectures"] if lec["lecture_number"] == "第2回")
     assert l2["nps"]["score"] == 10.0
     assert l2["scores"]["overall_satisfaction"] == 4.0

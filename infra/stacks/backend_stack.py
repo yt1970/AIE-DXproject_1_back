@@ -58,15 +58,11 @@ class AieDxprojectBackendStack(Stack):
             container_insights=True,
         )
 
-        use_sample_image = (
-            str(self.node.try_get_context("use_sample_image")).lower() != "false"
-        )
+        use_sample_image = str(self.node.try_get_context("use_sample_image")).lower() != "false"
         image_tag = self.node.try_get_context("image_tag") or "latest"
 
         if use_sample_image:
-            container_image = ecs.ContainerImage.from_registry(
-                "public.ecr.aws/docker/library/nginx:stable-alpine"
-            )
+            container_image = ecs.ContainerImage.from_registry("public.ecr.aws/docker/library/nginx:stable-alpine")
         else:
             container_image = ecs.ContainerImage.from_ecr_repository(
                 repository,

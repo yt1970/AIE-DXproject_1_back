@@ -1,5 +1,5 @@
 import logging
-from typing import List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, contains_eager
@@ -18,11 +18,10 @@ PRIORITY_LEVELS = (
 )
 
 
-@router.get(
-    "/courses/{course_name}/comments", response_model=List[CommentAnalysisSchema]
-)
+@router.get("/courses/{course_name}/comments", response_model=list[CommentAnalysisSchema])
 def get_course_comments(
     course_name: str,
+    db: Annotated[Session, Depends(get_db)],
     limit: int = 100,
     skip: int = 0,
     version: str | None = None,
@@ -35,7 +34,6 @@ def get_course_comments(
         default=False,
         description="When true, only medium/high priority comments are returned",
     ),
-    db: Session = Depends(get_db),
 ):
     """講義名単位で最新のコメント分析結果を取得する。"""
     query = (
@@ -66,9 +64,7 @@ def get_course_comments(
         query = query.filter(models.ResponseComment.llm_priority == priority)
     elif priority_only:
         query = query.filter(models.ResponseComment.llm_priority.in_(PRIORITY_LEVELS))
-    comments_with_scores = (
-        query.order_by(models.ResponseComment.id.desc()).offset(skip).limit(limit).all()
-    )
+    comments_with_scores = query.order_by(models.ResponseComment.id.desc()).offset(skip).limit(limit).all()
 
     if comments_with_scores:
         first_comment = comments_with_scores[0]

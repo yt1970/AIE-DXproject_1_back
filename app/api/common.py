@@ -1,5 +1,3 @@
-from typing import List
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -12,7 +10,7 @@ class AttributeItem(BaseModel):
 
 
 class AttributesResponse(BaseModel):
-    attributes: List[AttributeItem]
+    attributes: list[AttributeItem]
 
 
 @router.get("/attributes", response_model=AttributesResponse)

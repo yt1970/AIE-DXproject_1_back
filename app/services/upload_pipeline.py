@@ -4,10 +4,10 @@ import csv
 import io
 import logging
 import re
-from datetime import UTC, datetime
-from typing import Iterable, List
+from collections.abc import Iterable
 from uuid import uuid4
 
+import openpyxl
 from sqlalchemy.orm import Session
 
 from app.analysis.analyzer import analyze_comment
@@ -69,15 +69,13 @@ def analyze_and_store_comments(
         "親しいご友人にこの講義の受講をお薦めしますか？": "score_recommend_friend",
     }
 
-    for row_index, row in enumerate(reader, start=1):
+    for _, row in enumerate(reader, start=1):
         if debug_logs_enabled:
             logger.debug("--- Processing new CSV row ---")
             logger.debug("Raw row data from CSV: %s", row)
 
         account_id = _get_value_from_keys(row, ACCOUNT_ID_KEYS, debug_logs_enabled)
-        student_attribute = _get_value_from_keys(
-            row, STUDENT_ATTRIBUTE_KEYS, debug_logs_enabled
-        )
+        student_attribute = _get_value_from_keys(row, STUDENT_ATTRIBUTE_KEYS, debug_logs_enabled)
 
         if debug_logs_enabled:
             logger.debug("Extracted account_id: %s", account_id)
@@ -102,9 +100,7 @@ def analyze_and_store_comments(
         total_responses += 1
 
         # 自由記述をResponseCommentに保存
-        for column_name, comment_text in _extract_comment_texts(
-            row, analyzable_columns
-        ):
+        for column_name, comment_text in _extract_comment_texts(row, analyzable_columns):
             # LLM分析対象かを判定
             should_analyze_with_llm = column_name.startswith(LLM_ANALYSIS_TARGET_PREFIX)
 
@@ -132,14 +128,10 @@ def analyze_and_store_comments(
                 comment_text=comment_text,
                 llm_category=analysis_result.category_normalized.value,
                 llm_sentiment_type=(
-                    analysis_result.sentiment_normalized.value
-                    if analysis_result.sentiment_normalized
-                    else None
+                    analysis_result.sentiment_normalized.value if analysis_result.sentiment_normalized else None
                 ),
                 llm_priority=(
-                    analysis_result.priority_normalized.value
-                    if analysis_result.priority_normalized
-                    else None
+                    analysis_result.priority_normalized.value if analysis_result.priority_normalized else None
                 ),
                 llm_fix_difficulty=(
                     analysis_result.fix_difficulty_normalized.value
@@ -174,9 +166,7 @@ def validate_csv_or_raise(content_bytes: bytes, filename: str | None = None) -> 
 
 def build_storage_path(metadata: UploadRequestMetadata, filename: str | None) -> str:
     course = _slugify(metadata.course_name)
-    lecture_segment = (
-        f"{metadata.lecture_on.isoformat()}-lecture-{metadata.lecture_number}"
-    )
+    lecture_segment = f"{metadata.lecture_on.isoformat()}-lecture-{metadata.lecture_number}"
     safe_filename = _slugify(filename or "uploaded.csv", allow_period=True)
     return "/".join((course, lecture_segment, f"{uuid4().hex}_{safe_filename}"))
 
@@ -190,14 +180,10 @@ def _prepare_data_reader(
     """
     Prepare a reader (list of dicts) from CSV or Excel content.
     """
-    is_excel = filename and (
-        filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls")
-    )
+    is_excel = filename and (filename.lower().endswith(".xlsx") or filename.lower().endswith(".xls"))
 
     if is_excel:
         try:
-            import openpyxl
-
             wb = openpyxl.load_workbook(io.BytesIO(content_bytes), data_only=True)
             sheet = wb.active
             rows = list(sheet.iter_rows(values_only=True))
@@ -208,22 +194,18 @@ def _prepare_data_reader(
             data_rows = rows[1:]
 
             # Normalize headers
-            normalized_fieldnames = [
-                str(h).strip() if h is not None else "" for h in header_row
-            ]
+            normalized_fieldnames = [str(h).strip() if h is not None else "" for h in header_row]
 
             # Create list of dicts
             reader = []
             for row in data_rows:
                 # Pad row with None if shorter than header
-                padded_row = list(row) + [None] * (
-                    len(normalized_fieldnames) - len(row)
-                )
-                item = {k: v for k, v in zip(normalized_fieldnames, padded_row)}
+                padded_row = list(row) + [None] * (len(normalized_fieldnames) - len(row))
+                item = {k: v for k, v in zip(normalized_fieldnames, padded_row, strict=True)}
                 reader.append(item)
 
         except ImportError:
-            raise CsvValidationError("openpyxl is required for Excel files.")
+            raise CsvValidationError("openpyxl is required for Excel files.") from None
         except Exception as exc:
             raise CsvValidationError(f"Failed to parse Excel file: {exc}") from exc
 
@@ -251,15 +233,9 @@ def _prepare_data_reader(
         raise CsvValidationError("Header contains an empty column name.")
 
     if len(set(normalized_fieldnames)) != len(normalized_fieldnames):
-        raise CsvValidationError(
-            "Header contains duplicate column names after normalization."
-        )
+        raise CsvValidationError("Header contains duplicate column names after normalization.")
 
-    analyzable_columns = [
-        name
-        for name in normalized_fieldnames
-        if name.startswith(COMMENT_SAVE_TARGET_PREFIXES)
-    ]
+    analyzable_columns = [name for name in normalized_fieldnames if name.startswith(COMMENT_SAVE_TARGET_PREFIXES)]
     if not analyzable_columns:
         raise CsvValidationError(
             "File must contain at least one column whose header starts with '（任意）' or '【必須】'."
@@ -271,10 +247,8 @@ def _prepare_data_reader(
     return reader, analyzable_columns
 
 
-def _extract_comment_texts(
-    row: dict, analyzable_columns: Iterable[str]
-) -> List[tuple[str, str]]:
-    comment_texts: List[tuple[str, str]] = []
+def _extract_comment_texts(row: dict, analyzable_columns: Iterable[str]) -> list[tuple[str, str]]:
+    comment_texts: list[tuple[str, str]] = []
     for column in analyzable_columns:
         value = _normalize_cell(row.get(column))
         if value:
@@ -299,9 +273,7 @@ def _slugify(raw_value: str, *, allow_period: bool = False) -> str:
     return value or "value"
 
 
-def _get_value_from_keys(
-    row_dict: dict, keys: Iterable[str], debug_logs_enabled: bool
-) -> str | None:
+def _get_value_from_keys(row_dict: dict, keys: Iterable[str], debug_logs_enabled: bool) -> str | None:
     if debug_logs_enabled:
         logger.debug("--- Attempting to extract one of keys: %s", keys)
     for key in keys:

@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Tuple
 from urllib.parse import urlparse
 
 try:
@@ -30,7 +29,7 @@ class StorageClient:
         *,
         relative_path: str,
         data: bytes,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
     ) -> str:
         raise NotImplementedError
 
@@ -52,7 +51,7 @@ class LocalStorageClient(StorageClient):
         *,
         relative_path: str,
         data: bytes,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
     ) -> str:
         normalized_key = _normalize_key(relative_path)
         safe_path = _safe_join(self.base_directory, normalized_key)
@@ -63,9 +62,7 @@ class LocalStorageClient(StorageClient):
     def load(self, *, uri: str) -> bytes:
         scheme, key = _split_uri(uri)
         if scheme != "local":
-            raise StorageError(
-                f"Unsupported URI scheme '{scheme}' for LocalStorageClient."
-            )
+            raise StorageError(f"Unsupported URI scheme '{scheme}' for LocalStorageClient.")
         safe_path = _safe_join(self.base_directory, key)
         try:
             return safe_path.read_bytes()
@@ -75,9 +72,7 @@ class LocalStorageClient(StorageClient):
     def delete(self, *, uri: str) -> None:
         scheme, key = _split_uri(uri)
         if scheme != "local":
-            raise StorageError(
-                f"Unsupported URI scheme '{scheme}' for LocalStorageClient."
-            )
+            raise StorageError(f"Unsupported URI scheme '{scheme}' for LocalStorageClient.")
         safe_path = _safe_join(self.base_directory, key)
         try:
             safe_path.unlink(missing_ok=True)
@@ -93,13 +88,11 @@ class S3StorageClient(StorageClient):
         self,
         *,
         bucket: str,
-        base_prefix: Optional[str],
+        base_prefix: str | None,
         settings: AppSettings,
     ) -> None:
         if boto3 is None:
-            raise StorageError(
-                "boto3 dependency is required to use the S3 storage backend."
-            )
+            raise StorageError("boto3 dependency is required to use the S3 storage backend.")
         credentials = settings.aws_credentials
         self.bucket = bucket
         self.base_prefix = _normalize_prefix(base_prefix)
@@ -117,20 +110,14 @@ class S3StorageClient(StorageClient):
         *,
         relative_path: str,
         data: bytes,
-        content_type: Optional[str] = None,
+        content_type: str | None = None,
     ) -> str:
-        key = "/".join(
-            part for part in (self.base_prefix, _normalize_key(relative_path)) if part
-        )
+        key = "/".join(part for part in (self.base_prefix, _normalize_key(relative_path)) if part)
         try:
             extra_args = {"ContentType": content_type} if content_type else None
-            self.client.put_object(
-                Bucket=self.bucket, Key=key, Body=data, **(extra_args or {})
-            )
+            self.client.put_object(Bucket=self.bucket, Key=key, Body=data, **(extra_args or {}))
         except (BotoCoreError, ClientError) as exc:
-            logger.exception(
-                "Failed to upload file to S3: bucket=%s key=%s", self.bucket, key
-            )
+            logger.exception("Failed to upload file to S3: bucket=%s key=%s", self.bucket, key)
             raise StorageError(f"Failed to upload file to S3: {exc}") from exc
 
         return f"s3://{self.bucket}/{key}"
@@ -140,9 +127,7 @@ class S3StorageClient(StorageClient):
         try:
             response = self.client.get_object(Bucket=bucket, Key=key)
         except (BotoCoreError, ClientError) as exc:
-            logger.exception(
-                "Failed to download file from S3: bucket=%s key=%s", bucket, key
-            )
+            logger.exception("Failed to download file from S3: bucket=%s key=%s", bucket, key)
             raise StorageError(f"Failed to download file from S3: {exc}") from exc
 
         body = response.get("Body")
@@ -155,9 +140,7 @@ class S3StorageClient(StorageClient):
         try:
             self.client.delete_object(Bucket=bucket, Key=key)
         except (BotoCoreError, ClientError) as exc:
-            logger.exception(
-                "Failed to delete file from S3: bucket=%s key=%s", bucket, key
-            )
+            logger.exception("Failed to delete file from S3: bucket=%s key=%s", bucket, key)
             raise StorageError(f"Failed to delete file from S3: {exc}") from exc
 
 
@@ -170,7 +153,7 @@ def _safe_join(base_directory: Path, relative_path: str) -> Path:
     return full_path
 
 
-def _normalize_prefix(prefix: Optional[str]) -> str:
+def _normalize_prefix(prefix: str | None) -> str:
     if not prefix:
         return ""
     return "/".join(part for part in prefix.strip("/").split("/") if part)
@@ -180,14 +163,14 @@ def _normalize_key(key: str) -> str:
     return "/".join(part for part in key.strip("/").split("/") if part)
 
 
-def _split_uri(uri: str) -> Tuple[str, str]:
+def _split_uri(uri: str) -> tuple[str, str]:
     if "://" not in uri:
         raise StorageError(f"Invalid storage URI: {uri}")
     scheme, _, key = uri.partition("://")
     return scheme, _normalize_key(key)
 
 
-def _split_s3_uri(uri: str, *, default_bucket: str) -> Tuple[str, str]:
+def _split_s3_uri(uri: str, *, default_bucket: str) -> tuple[str, str]:
     parsed = urlparse(uri)
     if parsed.scheme and parsed.scheme != "s3":
         raise StorageError(f"Invalid S3 URI scheme: {parsed.scheme}")
@@ -201,7 +184,7 @@ def _split_s3_uri(uri: str, *, default_bucket: str) -> Tuple[str, str]:
 
 
 @lru_cache(maxsize=1)
-def get_storage_client(settings: Optional[AppSettings] = None) -> StorageClient:
+def get_storage_client(settings: AppSettings | None = None) -> StorageClient:
     """現在の環境設定に応じたストレージクライアントを返す。"""
     app_settings = settings or get_settings()
     storage_settings = app_settings.storage

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sys
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from types import ModuleType, SimpleNamespace
 from unittest.mock import MagicMock
 
 from app.db import models
+from app.workers import tasks
 
 
 def _install_boto3_stub():
@@ -35,11 +36,8 @@ def _install_boto3_stub():
 _install_boto3_stub()
 
 
-from app.workers import tasks
-
-
 class DummyQuery:
-    def __init__(self, session: "DummySession") -> None:
+    def __init__(self, session: DummySession) -> None:
         self._session = session
 
     def filter(self, *_args, **_kwargs):
@@ -95,7 +93,7 @@ def _make_survey_batch() -> models.SurveyBatch:
 def _prepare_task_request():
     try:
         task_request = tasks.process_uploaded_file.request
-        setattr(task_request, "retries", 0)
+        task_request.retries = 0
     except Exception:
         # Accessing the lazy Celery context can fail during unit tests; retries
         # are only read when handling StorageError, so default to zero.
@@ -132,9 +130,7 @@ def test_process_uploaded_file_happy_path(monkeypatch):
     summary_mock = MagicMock()
     monkeypatch.setattr(tasks, "compute_and_upsert_summaries", summary_mock)
 
-    result = tasks.process_uploaded_file.run(
-        batch_id=survey_batch.id, s3_key="mock_key"
-    )
+    result = tasks.process_uploaded_file.run(batch_id=survey_batch.id, s3_key="mock_key")
 
     storage_client.load.assert_called_once_with(uri="mock_key")
     analyze_mock.assert_called_once()

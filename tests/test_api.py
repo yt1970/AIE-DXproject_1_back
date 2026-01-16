@@ -2,24 +2,13 @@
 
 from __future__ import annotations
 
-import json
-import os
-import warnings
 from datetime import date, datetime
-from pathlib import Path
-from typing import Generator
 from urllib.parse import quote
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from app import main as app_main
-from app.core import settings as settings_module
 from app.db import models
 from app.db import session as session_module
-from app.services.storage import clear_storage_client_cache
 
 # ============================================================================
 # ヘルパー関数
@@ -33,11 +22,6 @@ from app.services.storage import clear_storage_client_cache
 
 def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> int:
     """テスト用のアップロードを実行し、survey_batch_idを返す"""
-    metadata = {
-        "course_name": course,
-        "lecture_on": date,
-        "lecture_number": number,
-    }
     csv_content = (
         "アカウントID,アカウント名,【必須】受講生が学んだこと,（任意）講義全体のコメント,（任意）講師へのメッセージ,"
         "本日の総合的な満足度を５段階で教えてください。,親しいご友人にこの講義の受講をお薦めしますか？,"
@@ -79,9 +63,7 @@ def _post_upload(client: TestClient, *, course: str, date: str, number: int) -> 
     return int(response.json()["job_id"])
 
 
-def _seed_comments_for_filter(
-    db: session_module.SessionLocal, *, course_name: str
-) -> None:
+def _seed_comments_for_filter(db: session_module.SessionLocal, *, course_name: str) -> None:
     lecture = models.Lecture(
         academic_year=2024,
         term="Spring",
@@ -93,9 +75,7 @@ def _seed_comments_for_filter(
     db.add(lecture)
     db.flush()
 
-    batch = models.SurveyBatch(
-        lecture_id=lecture.id, uploaded_at=datetime(2024, 5, 1, 0, 0, 0)
-    )
+    batch = models.SurveyBatch(lecture_id=lecture.id, uploaded_at=datetime(2024, 5, 1, 0, 0, 0))
     db.add(batch)
     db.flush()
 
@@ -170,9 +150,7 @@ def test_courses_list_endpoint(client: TestClient):
 
 def test_courses_list_with_params(client: TestClient):
     """コース一覧エンドポイントのパラメータ付きリクエスト"""
-    response = client.get(
-        "/api/v1/courses", params={"name": "test", "sort_by": "course_name"}
-    )
+    response = client.get("/api/v1/courses", params={"name": "test", "sort_by": "course_name"})
     assert response.status_code == 200
     data = response.json()
     assert "courses" in data
@@ -307,9 +285,7 @@ def test_duplicate_check_endpoint(client: TestClient) -> None:
 
 def test_finalize_and_version_filter(client: TestClient) -> None:
     """確定処理とバージョンフィルタの動作確認"""
-    batch_id = _post_upload(
-        client, course="Version Course", date="2024-06-01", number=1
-    )
+    batch_id = _post_upload(client, course="Version Course", date="2024-06-01", number=1)
 
     # finalize
     resp = client.post(f"/api/v1/uploads/{batch_id}/finalize")
@@ -319,9 +295,7 @@ def test_finalize_and_version_filter(client: TestClient) -> None:
     # NOTE: final_count not in response, just check finalized status
 
     # comments with version filter
-    resp2 = client.get(
-        f"/api/v1/courses/Version Course/comments", params={"version": "final"}
-    )
+    resp2 = client.get("/api/v1/courses/Version Course/comments", params={"version": "final"})
     assert resp2.status_code == 200
     comments = resp2.json()
     assert len(comments) > 0
@@ -334,26 +308,11 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
     # DB確認
     db = session_module.SessionLocal()
     try:
-        batch = (
-            db.query(models.SurveyBatch)
-            .filter(models.SurveyBatch.id == batch_id)
-            .first()
-        )
+        batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
         assert batch is not None
 
         # 現在の件数を控える
-        # NOTE: ResponseComment doesn't have survey_batch_id, join through response
-        cnt_comments = (
-            db.query(models.ResponseComment)
-            .join(models.ResponseComment.response)
-            .filter(models.SurveyResponse.survey_batch_id == batch_id)
-            .count()
-        )
-        cnt_surveys = (
-            db.query(models.SurveyResponse)
-            .filter(models.SurveyResponse.survey_batch_id == batch_id)
-            .count()
-        )
+        cnt_surveys = db.query(models.SurveyResponse).filter(models.SurveyResponse.survey_batch_id == batch_id).count()
     finally:
         db.close()
 
@@ -376,9 +335,7 @@ def test_delete_uploaded_analysis_removes_db_and_file(client: TestClient) -> Non
 
 def test_metrics_upsert_and_get(client: TestClient) -> None:
     """メトリクスの作成・更新・取得の動作確認"""
-    batch_id = _post_upload(
-        client, course="Metrics Course", date="2024-06-10", number=1
-    )
+    batch_id = _post_upload(client, course="Metrics Course", date="2024-06-10", number=1)
 
     # initial GET -> 100 (default in _post_upload)
     r0 = client.get(f"/api/v1/uploads/{batch_id}/metrics")

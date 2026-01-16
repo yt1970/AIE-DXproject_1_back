@@ -1,8 +1,7 @@
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -22,10 +21,10 @@ router = APIRouter()
 
 @router.get("/courses", response_model=CourseListResponse)
 def list_courses(
-    name: Optional[str] = None,
-    academic_year: Optional[int] = None,
-    term: Optional[str] = None,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
+    name: str | None = None,
+    academic_year: int | None = None,
+    term: str | None = None,
 ) -> CourseListResponse:
     """
     講座一覧を取得する。LECTURESテーブルをname, academic_year, termでグループ化して返します。
@@ -45,18 +44,18 @@ def list_courses(
     lectures = q.all()
 
     # Group by (name, academic_year, term)
-    grouped: Dict[tuple, List[models.Lecture]] = defaultdict(list)
+    grouped: dict[tuple, list[models.Lecture]] = defaultdict(list)
     for lec in lectures:
         key = (lec.name, lec.academic_year, lec.term)
         grouped[key].append(lec)
 
-    course_items: List[CourseItem] = []
+    course_items: list[CourseItem] = []
 
     for (c_name, c_year, c_term), lecs in grouped.items():
         # Sort lectures by date or session if needed
         lecs.sort(key=lambda x: x.lecture_on)
 
-        sessions: List[SessionSummary] = []
+        sessions: list[SessionSummary] = []
         for lec in lecs:
             # Determine available analysis types from batches
             types = set()
@@ -75,11 +74,7 @@ def list_courses(
                 )
             )
 
-        course_items.append(
-            CourseItem(
-                name=c_name, academic_year=c_year, term=c_term, sessions=sessions
-            )
-        )
+        course_items.append(CourseItem(name=c_name, academic_year=c_year, term=c_term, sessions=sessions))
 
     course_items.sort(key=lambda x: (-x.academic_year, x.name))
     return CourseListResponse(courses=course_items)
@@ -87,10 +82,10 @@ def list_courses(
 
 @router.get("/courses/detail", response_model=CourseDetailResponse)
 def get_course_detail(
+    db: Annotated[Session, Depends(get_db)],
     name: str = Query(..., description="講座名"),
     academic_year: int = Query(..., description="年度"),
     term: str = Query(..., description="期間"),
-    db: Session = Depends(get_db),
 ) -> CourseDetailResponse:
     """
     特定の講座（講座名・年度・期間の組み合わせ）の詳細情報を取得する。
@@ -109,9 +104,9 @@ def get_course_detail(
     if not lectures:
         raise HTTPException(status_code=404, detail="Course not found")
 
-    lecture_infos: List[LectureInfo] = []
+    lecture_infos: list[LectureInfo] = []
     for lec in lectures:
-        batches: List[BatchInfo] = []
+        batches: list[BatchInfo] = []
         for b in lec.survey_batches:
             # Map string to Enum safely
             try:
@@ -140,6 +135,4 @@ def get_course_detail(
             )
         )
 
-    return CourseDetailResponse(
-        name=name, academic_year=academic_year, term=term, lectures=lecture_infos
-    )
+    return CourseDetailResponse(name=name, academic_year=academic_year, term=term, lectures=lecture_infos)

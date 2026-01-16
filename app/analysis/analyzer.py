@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
-from typing import List, Optional
 
 from app.db.models import (
     CategoryType,
@@ -62,11 +61,7 @@ class CommentAnalysisResult:
 
     @property
     def fix_difficulty(self) -> str:
-        return (
-            self.fix_difficulty_normalized.value
-            if self.fix_difficulty_normalized
-            else ""
-        )
+        return self.fix_difficulty_normalized.value if self.fix_difficulty_normalized else ""
 
     @property
     def risk_level(self) -> str:
@@ -110,8 +105,8 @@ def get_llm_client() -> LLMClient:
 def analyze_comment(
     comment_text: str,
     *,
-    course_name: Optional[str] = None,
-    question_text: Optional[str] = None,
+    course_name: str | None = None,
+    question_text: str | None = None,
     skip_llm_analysis: bool = False,
 ) -> CommentAnalysisResult:
     """
@@ -149,9 +144,7 @@ def analyze_comment(
     is_abusive = not safety.is_comment_safe(comment_text, llm_structured)
 
     # LLMの処理が走らなかった場合の処理を行っている。キーワード一致での予測を行っている。
-    category_guess, sentiment_guess = aggregation.classify_comment(
-        comment_text, llm_structured
-    )
+    category_guess, sentiment_guess = aggregation.classify_comment(comment_text, llm_structured)
 
     sentiment_enum = _normalize_sentiment(llm_structured.sentiment or sentiment_guess)
     category_enum = _normalize_category(llm_structured.category or category_guess)
@@ -164,9 +157,7 @@ def analyze_comment(
     llm_structured.risk_level = risk_level_enum.value
     llm_structured.category = category_enum.value
     llm_structured.priority = priority_enum.value if priority_enum is not None else None
-    llm_structured.fix_difficulty = (
-        fix_difficulty_enum.value if fix_difficulty_enum is not None else None
-    )
+    llm_structured.fix_difficulty = fix_difficulty_enum.value if fix_difficulty_enum is not None else None
     llm_structured.sentiment = sentiment_enum.value
     llm_structured.sentiment_normalized = sentiment_enum
     llm_structured.category_normalized = category_enum
@@ -186,10 +177,10 @@ def analyze_comment(
     )
 
 
-def _dedupe_warnings(warnings: List[str]) -> List[str]:
+def _dedupe_warnings(warnings: list[str]) -> list[str]:
     """重複する警告メッセージを順序を保ったまま削除する。"""
     seen = set()
-    deduped: List[str] = []
+    deduped: list[str] = []
     for warning in warnings:
         if warning not in seen:
             deduped.append(warning)

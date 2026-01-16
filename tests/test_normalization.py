@@ -4,8 +4,6 @@
 LLMからのプレーンテキスト出力を正しくEnum型に変換できるかをテストします。
 """
 
-import pytest
-
 from app.analysis.analyzer import (
     _normalize_category,
     _normalize_fix_difficulty,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from logging.config import fileConfig
-from typing import Any, Dict
+from typing import Any
 
 from sqlalchemy import engine_from_config, pool
 
@@ -43,7 +43,7 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    configuration: Dict[str, Any] = config.get_section(config.config_ini_section, {})
+    configuration: dict[str, Any] = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_database_url()
 
     connectable = engine_from_config(

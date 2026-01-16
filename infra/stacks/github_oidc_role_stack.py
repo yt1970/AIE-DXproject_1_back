@@ -35,20 +35,14 @@ class GithubOidcRoleStack(Stack):
             role_name="AieDxprojectGithubActionsRole",
             assumed_by=iam.OpenIdConnectPrincipal(provider).with_conditions(  # type: ignore[arg-type]
                 {
-                    "StringEquals": {
-                        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                    },
+                    "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
                     "StringLike": {
-                        "token.actions.githubusercontent.com:sub": (
-                            f"repo:{github_owner}/{github_repo}:*"
-                        )
+                        "token.actions.githubusercontent.com:sub": (f"repo:{github_owner}/{github_repo}:*")
                     },
                 }
             ),
             managed_policies=[
-                iam.ManagedPolicy.from_aws_managed_policy_name(
-                    "AmazonEC2ContainerRegistryPowerUser"
-                ),
+                iam.ManagedPolicy.from_aws_managed_policy_name("AmazonEC2ContainerRegistryPowerUser"),
             ],
         )
 

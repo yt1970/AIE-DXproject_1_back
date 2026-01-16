@@ -1,9 +1,11 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.schemas.comment import JobError, JobResult, JobStatusResponse
+from app.schemas.comment import JobResult, JobStatusResponse
 
 router = APIRouter()
 
@@ -11,7 +13,7 @@ router = APIRouter()
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job_status(
     job_id: str,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ):
     """
     アップロード処理などの非同期ジョブの進行状況と結果を取得する。
@@ -20,11 +22,9 @@ def get_job_status(
     try:
         batch_id = int(job_id)
     except ValueError:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found") from None
 
-    survey_batch = (
-        db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
-    )
+    survey_batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
 
     if not survey_batch:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
@@ -34,8 +34,7 @@ def get_job_status(
         db.query(models.SurveySummary)
         .filter(
             models.SurveySummary.survey_batch_id == batch_id,
-            models.SurveySummary.student_attribute
-            == "all",  # Assuming 'all' summary is always created
+            models.SurveySummary.student_attribute == "all",  # Assuming 'all' summary is always created
         )
         .first()
     )

@@ -34,16 +34,12 @@ def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
     configure_celery_app()
 
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models.Base.metadata.create_all(engine)
 
     monkeypatch.setattr(session_module, "engine", engine, raising=False)
-    monkeypatch.setattr(
-        session_module, "SessionLocal", TestingSessionLocal, raising=False
-    )
+    monkeypatch.setattr(session_module, "SessionLocal", TestingSessionLocal, raising=False)
 
     def override_get_db():
         db = TestingSessionLocal()

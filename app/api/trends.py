@@ -1,8 +1,7 @@
 from collections import defaultdict
-from typing import List, Optional
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -31,12 +30,12 @@ router = APIRouter()
 
 @router.get("/courses/trends", response_model=OverallTrendsResponse)
 def get_overall_trends(
+    db: Annotated[Session, Depends(get_db)],
     name: str = Query(..., description="講座名"),
     academic_year: int = Query(..., description="年度"),
     term: str = Query(..., description="期間"),
     batch_type: str = Query(..., description="preliminary/confirmed"),
     student_attribute: str = Query("all", description="属性フィルタ"),
-    db: Session = Depends(get_db),
 ) -> OverallTrendsResponse:
     """
     講座全体を通しての傾向データを取得する。
@@ -81,7 +80,7 @@ def get_overall_trends(
             category_summary=[],
         )
 
-    lecture_ids = [l.id for l in lectures]
+    lecture_ids = [lec.id for lec in lectures]
 
     # 2. 各講義回のバッチを取得 (指定されたbatch_typeの最新)
     batches = []
@@ -101,14 +100,10 @@ def get_overall_trends(
     batch_ids = [b.id for b in batches]
 
     # 3. サマリデータを取得
-    query = db.query(models.SurveySummary).filter(
-        models.SurveySummary.survey_batch_id.in_(batch_ids)
-    )
+    query = db.query(models.SurveySummary).filter(models.SurveySummary.survey_batch_id.in_(batch_ids))
 
     if student_attribute != "all":
-        query = query.filter(
-            models.SurveySummary.student_attribute == student_attribute
-        )
+        query = query.filter(models.SurveySummary.student_attribute == student_attribute)
 
     summaries = query.all()
 
@@ -126,17 +121,14 @@ def get_overall_trends(
 
     if first_lecture_id:
         # Find batch for first lecture
-        first_batch = next(
-            (b for b in batches if b.lecture_id == first_lecture_id), None
-        )
+        first_batch = next((b for b in batches if b.lecture_id == first_lecture_id), None)
         if first_batch:
             # Find summary for first batch matching the requested attribute
             first_summary = next(
                 (
                     s
                     for s in summaries
-                    if s.survey_batch_id == first_batch.id
-                    and s.student_attribute == student_attribute
+                    if s.survey_batch_id == first_batch.id and s.student_attribute == student_attribute
                 ),
                 None,
             )
@@ -148,13 +140,13 @@ def get_overall_trends(
     # Lecture Info
     lecture_info_items = [
         LectureInfoItem(
-            lecture_id=l.id,
-            session=l.session,
-            lecture_date=str(l.lecture_on),
-            instructor_name=l.instructor_name,
-            description=l.description,
+            lecture_id=lec.id,
+            session=lec.session,
+            lecture_date=str(lec.lecture_on),
+            instructor_name=lec.instructor_name,
+            description=lec.description,
         )
-        for l in lectures
+        for lec in lectures
     ]
 
     # Trends
@@ -287,30 +279,16 @@ def get_overall_trends(
     # Overall NPS
     overall_nps_score = 0.0
     if total_responses_nps > 0:
-        overall_nps_score = (
-            (total_promoters - total_detractors) / total_responses_nps
-        ) * 100.0
+        overall_nps_score = ((total_promoters - total_detractors) / total_responses_nps) * 100.0
 
     nps_summary = NPSSummary(
         score=round(overall_nps_score, 1),
         promoters_count=total_promoters,
-        promoters_percentage=(
-            round(total_promoters / total_responses_nps * 100, 1)
-            if total_responses_nps
-            else 0
-        ),
+        promoters_percentage=(round(total_promoters / total_responses_nps * 100, 1) if total_responses_nps else 0),
         neutrals_count=total_neutrals,
-        neutrals_percentage=(
-            round(total_neutrals / total_responses_nps * 100, 1)
-            if total_responses_nps
-            else 0
-        ),
+        neutrals_percentage=(round(total_neutrals / total_responses_nps * 100, 1) if total_responses_nps else 0),
         detractors_count=total_detractors,
-        detractors_percentage=(
-            round(total_detractors / total_responses_nps * 100, 1)
-            if total_responses_nps
-            else 0
-        ),
+        detractors_percentage=(round(total_detractors / total_responses_nps * 100, 1) if total_responses_nps else 0),
         total_responses=total_responses_nps,
     )
 
@@ -322,11 +300,7 @@ def get_overall_trends(
     overall_averages = OverallAverages(
         overall={
             "label": "総合満足度",
-            "items": [
-                ScoreItem(
-                    name="本日の総合的な満足度", score=_avg("overall_satisfaction")
-                )
-            ],
+            "items": [ScoreItem(name="本日の総合的な満足度", score=_avg("overall_satisfaction"))],
         },
         content={
             "label": "講義内容",
@@ -339,9 +313,7 @@ def get_overall_trends(
         instructor={
             "label": "講師評価",
             "items": [
-                ScoreItem(
-                    name="講師の総合的な満足度", score=_avg("instructor_satisfaction")
-                ),
+                ScoreItem(name="講師の総合的な満足度", score=_avg("instructor_satisfaction")),
                 ScoreItem(name="講師の授業時間の使い方", score=_avg("time_management")),
                 ScoreItem(name="講師の質問対応", score=_avg("question_handling")),
                 ScoreItem(name="講師の話し方", score=_avg("speaking_style")),
@@ -387,11 +359,7 @@ def get_overall_trends(
     for s_key in ["positive", "neutral", "negative"]:
         cnt = sentiments.get(s_key, 0)
         pct = (cnt / total_sentiments * 100.0) if total_sentiments > 0 else 0.0
-        sentiment_summary.append(
-            SentimentSummaryItem(
-                sentiment=Sentiment(s_key), count=cnt, percentage=round(pct, 1)
-            )
-        )
+        sentiment_summary.append(SentimentSummaryItem(sentiment=Sentiment(s_key), count=cnt, percentage=round(pct, 1)))
 
     category_summary = []
     for c_key in ["content", "materials", "operations", "instructor", "other"]:
@@ -407,9 +375,7 @@ def get_overall_trends(
             db_key = "operation"
 
         cnt = categories.get(db_key, 0)
-        category_summary.append(
-            CategorySummaryItem(category=CommentCategory(c_key), count=cnt)
-        )
+        category_summary.append(CategorySummaryItem(category=CommentCategory(c_key), count=cnt))
 
     return OverallTrendsResponse(
         lecture_info=lecture_info_items,
@@ -426,22 +392,20 @@ def get_overall_trends(
 
 @router.get("/courses/compare", response_model=YearComparisonResponse)
 def compare_years(
+    db: Annotated[Session, Depends(get_db)],
     name: str = Query(..., description="講座名"),
     current_year: int = Query(..., description="比較元の年度"),
     current_term: str = Query(..., description="比較元の期間"),
     compare_year: int = Query(..., description="比較先の年度"),
     compare_term: str = Query(..., description="比較先の期間"),
     batch_type: str = Query(..., description="分析タイプ"),
-    db: Session = Depends(get_db),
 ) -> YearComparisonResponse:
     """
     同一講座名の異なる年度・期間のデータを比較する。
     """
 
     # Helper to calculate metrics for a specific period
-    def _get_metrics(
-        t_year: int, t_term: str
-    ) -> tuple[YearMetrics, List[NPSTrendItem]]:
+    def _get_metrics(t_year: int, t_term: str) -> tuple[YearMetrics, list[NPSTrendItem]]:
         # 1. Get Lectures
         lectures = (
             db.query(models.Lecture)
@@ -466,8 +430,6 @@ def compare_years(
                 ),
                 [],
             )
-
-        lecture_ids = [l.id for l in lectures]
 
         # 2. Get Batches
         batches = []
