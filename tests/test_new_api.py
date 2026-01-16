@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
-import os
 import warnings
+from collections.abc import Generator
 from datetime import date, datetime
 from pathlib import Path
-from typing import Generator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,9 +18,7 @@ from app.services.storage import clear_storage_client_cache
 
 
 @pytest.fixture(name="client")
-def fixture_client(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> Generator[TestClient, None, None]:
+def fixture_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient]:
     """テスト用のクライアントを作成（データベースセットアップ済み）"""
     db_path = tmp_path / "test_new.sqlite3"
     uploads_dir = tmp_path / "uploads_new"
@@ -42,16 +38,12 @@ def fixture_client(
 
     configure_celery_app()
 
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models.Base.metadata.create_all(engine)
 
     monkeypatch.setattr(session_module, "engine", engine, raising=False)
-    monkeypatch.setattr(
-        session_module, "SessionLocal", TestingSessionLocal, raising=False
-    )
+    monkeypatch.setattr(session_module, "SessionLocal", TestingSessionLocal, raising=False)
 
     def override_get_db():
         db = TestingSessionLocal()
@@ -155,9 +147,7 @@ def test_get_lecture_analysis(client: TestClient):
     lid = l1.id
     db.close()
 
-    response = client.get(
-        f"/api/v1/lectures/{lid}/analysis", params={"batch_type": "preliminary"}
-    )
+    response = client.get(f"/api/v1/lectures/{lid}/analysis", params={"batch_type": "preliminary"})
     assert response.status_code == 200
     data = response.json()
     assert data["lecture_info"]["lecture_id"] == lid
@@ -258,26 +248,14 @@ def test_get_overall_trends(client: TestClient):
     db.refresh(b2)
 
     # Summaries for Batch 1
-    s1_all = models.SurveySummary(
-        survey_batch_id=b1.id, student_attribute="all", response_count=100, nps=10.0
-    )
-    s1_stu = models.SurveySummary(
-        survey_batch_id=b1.id, student_attribute="student", response_count=60
-    )
-    s1_cor = models.SurveySummary(
-        survey_batch_id=b1.id, student_attribute="corporate", response_count=40
-    )
+    s1_all = models.SurveySummary(survey_batch_id=b1.id, student_attribute="all", response_count=100, nps=10.0)
+    s1_stu = models.SurveySummary(survey_batch_id=b1.id, student_attribute="student", response_count=60)
+    s1_cor = models.SurveySummary(survey_batch_id=b1.id, student_attribute="corporate", response_count=40)
 
     # Summaries for Batch 2
-    s2_all = models.SurveySummary(
-        survey_batch_id=b2.id, student_attribute="all", response_count=80, nps=20.0
-    )
-    s2_stu = models.SurveySummary(
-        survey_batch_id=b2.id, student_attribute="student", response_count=50
-    )
-    s2_cor = models.SurveySummary(
-        survey_batch_id=b2.id, student_attribute="corporate", response_count=30
-    )
+    s2_all = models.SurveySummary(survey_batch_id=b2.id, student_attribute="all", response_count=80, nps=20.0)
+    s2_stu = models.SurveySummary(survey_batch_id=b2.id, student_attribute="student", response_count=50)
+    s2_cor = models.SurveySummary(survey_batch_id=b2.id, student_attribute="corporate", response_count=30)
 
     db.add_all([s1_all, s1_stu, s1_cor, s2_all, s2_stu, s2_cor])
     db.commit()

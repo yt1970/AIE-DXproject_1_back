@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from typing import Tuple
 
 from app.services import LLMAnalysisResult
 
@@ -56,9 +55,7 @@ CATEGORY_KEYWORDS = {
 }
 
 
-def classify_comment(
-    comment_text: str, llm_output: LLMAnalysisResult
-) -> Tuple[str, str]:
+def classify_comment(comment_text: str, llm_output: LLMAnalysisResult) -> tuple[str, str]:
     """
     LLMの出力やキーワードを基にコメントを分類し、感情を判定する。
     """
@@ -110,5 +107,5 @@ def _determine_sentiment(comment_text: str, llm_output: LLMAnalysisResult) -> st
     return "neutral"
 
 
-def _count_occurrences(text: str, keywords: Tuple[str, ...]) -> int:
+def _count_occurrences(text: str, keywords: tuple[str, ...]) -> int:
     return sum(len(re.findall(re.escape(keyword), text)) for keyword in keywords)

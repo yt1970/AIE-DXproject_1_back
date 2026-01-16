@@ -1,7 +1,5 @@
 import base64
 import json
-import os
-from typing import Optional
 
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -13,9 +11,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.debug = debug
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # 1. AWS ALB Authentication Headers
         oidc_identity = request.headers.get("x-amzn-oidc-identity")
         oidc_data = request.headers.get("x-amzn-oidc-data")
@@ -51,6 +47,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                     # If decoding fails, we still have the identity (sub) from header
                     if self.debug:
                         import traceback
+
                         traceback.print_exc()
 
         elif self.debug:

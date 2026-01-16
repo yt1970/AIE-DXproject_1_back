@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -16,25 +15,25 @@ class SessionSummary(BaseModel):
     lecture_id: int
     session: str
     lecture_date: date
-    analysis_types: List[AnalysisType]
+    analysis_types: list[AnalysisType]
 
 
 class CourseItem(BaseModel):
     name: str
     academic_year: int
     term: str
-    sessions: List[SessionSummary]
+    sessions: list[SessionSummary]
 
 
 class CourseListResponse(BaseModel):
-    courses: List[CourseItem]
+    courses: list[CourseItem]
 
 
 class BatchInfo(BaseModel):
     id: int
     batch_type: AnalysisType
-    zoom_participants: Optional[int] = None
-    recording_views: Optional[int] = None
+    zoom_participants: int | None = None
+    recording_views: int | None = None
     uploaded_at: datetime
 
 
@@ -43,15 +42,15 @@ class LectureInfo(BaseModel):
     session: str
     lecture_date: date
     instructor_name: str
-    description: Optional[str] = None
-    batches: List[BatchInfo]
+    description: str | None = None
+    batches: list[BatchInfo]
 
 
 class CourseDetailResponse(BaseModel):
     name: str
     academic_year: int
     term: str
-    lectures: List[LectureInfo]
+    lectures: list[LectureInfo]
 
 
 # --- Legacy / Internal Schemas (Keep if needed for other parts, or refactor later) ---
@@ -68,14 +67,14 @@ class LectureCreate(BaseModel):
     course_name: str
     academic_year: int
     period: str
-    category: Optional[LectureCategory] = None
+    category: LectureCategory | None = None
 
 
 class LectureUpdate(BaseModel):
-    course_name: Optional[str] = None
-    academic_year: Optional[int] = None
-    period: Optional[str] = None
-    category: Optional[LectureCategory] = None
+    course_name: str | None = None
+    academic_year: int | None = None
+    period: str | None = None
+    category: LectureCategory | None = None
 
 
 class ScoreDistributionSchema(BaseModel):
@@ -89,18 +88,18 @@ class ScoreDistributionSchema(BaseModel):
 class LectureSummaryResponse(BaseModel):
     id: int
     course_name: str
-    academic_year: Optional[str] = None
-    period: Optional[str] = None
-    term: Optional[str] = None
-    name: Optional[str] = None
-    session: Optional[str] = None
-    instructor_name: Optional[str] = None
-    lecture_on: Optional[date] = None
+    academic_year: str | None = None
+    period: str | None = None
+    term: str | None = None
+    name: str | None = None
+    session: str | None = None
+    instructor_name: str | None = None
+    lecture_on: date | None = None
     model_config = ConfigDict(from_attributes=True)
 
 
 class LectureDetailResponse(LectureSummaryResponse):
-    description: Optional[str] = None
-    updated_at: Optional[datetime] = None
-    score_distributions: List[ScoreDistributionSchema] = []
+    description: str | None = None
+    updated_at: datetime | None = None
+    score_distributions: list[ScoreDistributionSchema] = []
     model_config = ConfigDict(from_attributes=True)

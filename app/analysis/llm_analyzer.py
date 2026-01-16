@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from app.services import LLMAnalysisResult, LLMClient, LLMClientError
 
@@ -12,8 +11,8 @@ def analyze_with_llm(
     llm_client: LLMClient,
     comment_text: str,
     *,
-    course_name: Optional[str] = None,
-    question_text: Optional[str] = None,
+    course_name: str | None = None,
+    question_text: str | None = None,
 ) -> LLMAnalysisResult:
     """
     LLMを使用してコメントを多角的に分析し、結果を統合して返す。
@@ -28,6 +27,4 @@ def analyze_with_llm(
     except (LLMClientError, ValueError) as exc:
         warning = f"LLM analysis for 'full_analysis' failed: {exc}"
         logger.warning(warning)
-        return LLMAnalysisResult(
-            raw={"full_analysis": {"error": str(exc)}}, warnings=[warning]
-        )
+        return LLMAnalysisResult(raw={"full_analysis": {"error": str(exc)}}, warnings=[warning])

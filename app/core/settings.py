@@ -5,7 +5,6 @@ import logging
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,10 +31,10 @@ class AWSSettings(BaseSettings):
         env_prefix="AWS_",
     )
 
-    access_key_id: Optional[str] = None
-    secret_access_key: Optional[str] = None
-    session_token: Optional[str] = None
-    region: Optional[str] = None
+    access_key_id: str | None = None
+    secret_access_key: str | None = None
+    session_token: str | None = None
+    region: str | None = None
 
 
 class LLMSettings(BaseSettings):
@@ -47,14 +46,14 @@ class LLMSettings(BaseSettings):
     )
 
     provider: str = "mock"
-    api_base: Optional[str] = None
-    model: Optional[str] = None
-    api_key: Optional[str] = None
-    api_version: Optional[str] = None
-    organization: Optional[str] = None
+    api_base: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    api_version: str | None = None
+    organization: str | None = None
     timeout_seconds: float = 15.0
-    request_template: Optional[str] = None
-    extra_headers: Dict[str, str] = Field(default_factory=dict)
+    request_template: str | None = None
+    extra_headers: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("provider", mode="before")
     @classmethod
@@ -70,9 +69,7 @@ class LLMSettings(BaseSettings):
 
     @field_validator("extra_headers", mode="before")
     @classmethod
-    def _parse_extra_headers(
-        cls, value: Optional[str | Dict[str, str]]
-    ) -> Dict[str, str]:
+    def _parse_extra_headers(cls, value: str | dict[str, str] | None) -> dict[str, str]:
         if value is None or value == "":
             return {}
         if isinstance(value, dict):
@@ -81,9 +78,7 @@ class LLMSettings(BaseSettings):
             try:
                 parsed = json.loads(value)
             except json.JSONDecodeError as exc:
-                raise ValueError(
-                    "LLM_EXTRA_HEADERS must be a JSON object string"
-                ) from exc
+                raise ValueError("LLM_EXTRA_HEADERS must be a JSON object string") from exc
             if isinstance(parsed, dict):
                 return {str(k): str(v) for k, v in parsed.items()}
             raise ValueError("LLM_EXTRA_HEADERS must decode to a JSON object")
@@ -99,11 +94,11 @@ class StorageSettings(BaseSettings):
     )
 
     backend: str = "local"
-    s3_bucket: Optional[str] = None
-    base_prefix: Optional[str] = "uploads"
+    s3_bucket: str | None = None
+    base_prefix: str | None = "uploads"
     local_directory: str = "./var/uploads"
 
-    def model_post_init(self, __context: Dict[str, object]) -> None:
+    def model_post_init(self, __context: dict[str, object]) -> None:
         backend = (self.backend or "local").strip().lower()
         if backend not in {"local", "s3"}:
             logger.warning(
@@ -115,9 +110,7 @@ class StorageSettings(BaseSettings):
 
         normalized_prefix = ""
         if self.base_prefix:
-            normalized_prefix = "/".join(
-                part for part in self.base_prefix.strip("/").split("/") if part
-            )
+            normalized_prefix = "/".join(part for part in self.base_prefix.strip("/").split("/") if part)
         object.__setattr__(self, "base_prefix", normalized_prefix)
 
     @property
@@ -145,7 +138,7 @@ class CelerySettings(BaseSettings):
     )
 
     broker_url: str = "redis://localhost:6379/0"
-    result_backend: Optional[str] = None
+    result_backend: str | None = None
     task_default_queue: str = "aie_dxproject_analysis"
     task_always_eager: bool = False
     task_eager_propagates: bool = True
@@ -161,9 +154,9 @@ class CognitoSettings(BaseSettings):
         env_prefix="COGNITO_",
     )
 
-    domain: Optional[str] = None
-    client_id: Optional[str] = None
-    logout_redirect_uri: Optional[str] = None
+    domain: str | None = None
+    client_id: str | None = None
+    logout_redirect_uri: str | None = None
 
 
 class AppSettings(BaseSettings):
@@ -176,12 +169,8 @@ class AppSettings(BaseSettings):
     env: str = Field(default="development", alias="APP_ENV")
     title: str = Field(default="AIE-DXproject Backend", alias="API_TITLE")
     debug: bool = Field(default=False, alias="API_DEBUG")
-    database_url: str = Field(
-        default="sqlite:///./app_dev.sqlite3", alias="DATABASE_URL"
-    )
-    frontend_url: str = Field(
-        default="http://localhost:5173", alias="FRONTEND_URL"
-    )
+    database_url: str = Field(default="sqlite:///./app_dev.sqlite3", alias="DATABASE_URL")
+    frontend_url: str = Field(default="http://localhost:5173", alias="FRONTEND_URL")
 
     aws: AWSSettings = Field(default_factory=AWSSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
@@ -190,13 +179,9 @@ class AppSettings(BaseSettings):
     cognito: CognitoSettings = Field(default_factory=CognitoSettings)
 
     @property
-    def aws_credentials(self) -> Dict[str, str]:
+    def aws_credentials(self) -> dict[str, str]:
         """boto3などに渡せる辞書形式の認証情報を返す。"""
-        return {
-            key: value
-            for key, value in self.aws.model_dump().items()
-            if value is not None
-        }
+        return {key: value for key, value in self.aws.model_dump().items() if value is not None}
 
 
 @lru_cache(maxsize=1)

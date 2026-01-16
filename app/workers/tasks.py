@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
-from typing import Optional
 
 from celery import Task
 from sqlalchemy.orm import Session
@@ -37,7 +35,7 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
 
     session: Session = db_session.SessionLocal()
     storage_client = get_storage_client()
-    survey_batch: Optional[models.SurveyBatch] = None
+    survey_batch: models.SurveyBatch | None = None
 
     try:
         survey_batch = session.get(models.SurveyBatch, batch_id)
@@ -50,13 +48,11 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
 
         content_bytes = storage_client.load(uri=s3_key)
 
-        total_comments, processed_comments, total_responses = (
-            analyze_and_store_comments(
-                db=session,
-                survey_batch=survey_batch,
-                content_bytes=content_bytes,
-                filename=s3_key,
-            )
+        total_comments, processed_comments, total_responses = analyze_and_store_comments(
+            db=session,
+            survey_batch=survey_batch,
+            content_bytes=content_bytes,
+            filename=s3_key,
         )
 
         # 挿入済みのコメント/回答を先に確定させ、後続の重い集計でのロールバックを避ける
@@ -64,9 +60,7 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
 
         # Pre-compute summaries for dashboard
         # This effectively marks the batch as "done" when summaries are present
-        compute_and_upsert_summaries(
-            session, survey_batch=survey_batch, version="preliminary"
-        )
+        compute_and_upsert_summaries(session, survey_batch=survey_batch, version="preliminary")
 
         session.commit()
 
@@ -84,7 +78,7 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
             "total_responses": total_responses,
         }
 
-    except CsvValidationError as exc:
+    except CsvValidationError:
         session.rollback()
         logger.exception("Background processing failed for batch_id=%s", batch_id)
         # Cannot store error message in DB as per design
@@ -92,11 +86,7 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
     except StorageError as exc:
         session.rollback()
         retries = self.request.retries
-        max_retries = (
-            self.max_retries
-            if self.max_retries is not None
-            else self.app.conf.task_max_retries
-        )
+        max_retries = self.max_retries if self.max_retries is not None else self.app.conf.task_max_retries
         logger.warning(
             "StorageError on processing batch_id=%s (attempt %s/%s): %s",
             batch_id,
@@ -106,8 +96,8 @@ def process_uploaded_file(self: Task, *, batch_id: int, s3_key: str) -> dict:
         )
         if max_retries is not None and retries >= max_retries:
             raise
-        raise self.retry(exc=exc)
-    except Exception as exc:  # pragma: no cover - unexpected failures
+        raise self.retry(exc=exc) from exc
+    except Exception:  # pragma: no cover - unexpected failures
         session.rollback()
         logger.exception("Unexpected failure during background processing.")
         raise

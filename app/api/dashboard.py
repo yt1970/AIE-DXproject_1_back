@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, Iterable, List, Optional, Tuple
+from collections.abc import Iterable
+from datetime import date
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
@@ -28,17 +30,17 @@ _SCORE_FIELD_MAP = {
 
 def _choose_effective_batches(
     rows: Iterable[models.SurveyBatch],
-) -> Dict[int, models.SurveyBatch]:
+) -> dict[int, models.SurveyBatch]:
     """講義IDごとの代表バッチを選択する。
 
     優先順位:
     1. uploaded_at の新しいもの (finalized_at はモデルにないため)
     """
-    by_lecture_id: Dict[int, List[models.SurveyBatch]] = defaultdict(list)
+    by_lecture_id: dict[int, list[models.SurveyBatch]] = defaultdict(list)
     for row in rows:
         by_lecture_id[row.lecture_id].append(row)
 
-    chosen: Dict[int, models.SurveyBatch] = {}
+    chosen: dict[int, models.SurveyBatch] = {}
     for lecture_id, batches in by_lecture_id.items():
         # batch_type='confirmed' を優先すべきだが、
         # ここでは単純に uploaded_at が最新のものを採用する（または呼び出し元でフィルタリング済みと仮定）
@@ -54,8 +56,8 @@ def _choose_effective_batches(
 def _pick_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[int, models.SurveySummary],
-) -> Optional[models.SurveySummary]:
+    summaries: dict[int, models.SurveySummary],
+) -> models.SurveySummary | None:
     # version は旧設計互換のため残しているが、現在はバッチ単位で単一サマリのみを保持する。
     return summaries.get(batch_id)
 
@@ -63,17 +65,17 @@ def _pick_summary(
 def _pick_comment_summary(
     batch_id: int,
     version: str,
-    summaries: Dict[int, List[models.CommentSummary]],
-) -> List[models.CommentSummary]:
+    summaries: dict[int, list[models.CommentSummary]],
+) -> list[models.CommentSummary]:
     # version は旧設計互換のため残しているが、現在はバッチ単位で単一集合のみを保持する。
     return summaries.get(batch_id) or []
 
 
 def _aggregate_scores(
-    summaries: List[models.SurveySummary],
-) -> Dict[str, Optional[float]]:
-    totals: Dict[str, float] = {k: 0.0 for k in _SCORE_FIELD_MAP.keys()}
-    weights: Dict[str, int] = {k: 0 for k in _SCORE_FIELD_MAP.keys()}
+    summaries: list[models.SurveySummary],
+) -> dict[str, float | None]:
+    totals: dict[str, float] = {k: 0.0 for k in _SCORE_FIELD_MAP.keys()}
+    weights: dict[str, int] = {k: 0 for k in _SCORE_FIELD_MAP.keys()}
     for s in summaries:
         weight = s.response_count or 0
         if weight <= 0:
@@ -83,7 +85,7 @@ def _aggregate_scores(
             if value is not None:
                 totals[out_key] += float(value) * weight
                 weights[out_key] += weight
-    result: Dict[str, Optional[float]] = {}
+    result: dict[str, float | None] = {}
     for key in _SCORE_FIELD_MAP.keys():
         if weights[key] > 0:
             result[key] = round(totals[key] / weights[key], 2)
@@ -93,8 +95,8 @@ def _aggregate_scores(
 
 
 def _aggregate_nps(
-    summaries: List[models.SurveySummary],
-) -> Dict[str, float | int]:
+    summaries: list[models.SurveySummary],
+) -> dict[str, float | int]:
     promoters = sum(int(s.promoter_count or 0) for s in summaries)
     passives = sum(int(s.passive_count or 0) for s in summaries)
     detractors = sum(int(s.detractor_count or 0) for s in summaries)
@@ -110,8 +112,8 @@ def _aggregate_nps(
 
 
 def _comment_stats(
-    rows: List[models.CommentSummary],
-) -> Tuple[Dict[str, int], Dict[str, int], Dict[str, int], Dict[str, int], int, int]:
+    rows: list[models.CommentSummary],
+) -> tuple[dict[str, int], dict[str, int], dict[str, int], dict[str, int], int, int]:
     sentiments = {"positive": 0, "negative": 0, "neutral": 0}
     categories = {
         "lecture_content": 0,
@@ -160,33 +162,31 @@ def _comment_stats(
 
 
 def _aggregate_sentiments(
-    summaries: List[models.CommentSummary],
-) -> Dict[str, int]:
+    summaries: list[models.CommentSummary],
+) -> dict[str, int]:
     sentiments, _, _, _, _, _ = _comment_stats(summaries)
     return sentiments
 
 
 def _aggregate_categories(
-    summaries: List[models.CommentSummary],
-) -> Dict[str, int]:
+    summaries: list[models.CommentSummary],
+) -> dict[str, int]:
     _, categories, _, _, _, _ = _comment_stats(summaries)
     return categories
 
 
 def _aggregate_fix_difficulty(
-    summaries: List[models.CommentSummary],
-) -> Dict[str, int]:
+    summaries: list[models.CommentSummary],
+) -> dict[str, int]:
     _, _, _, fix_difficulty, _, _ = _comment_stats(summaries)
     return fix_difficulty
 
 
 def _aggregate_counts(
-    survey_summaries: List[models.SurveySummary],
-    comment_summaries: List[models.CommentSummary],
-) -> Dict[str, int]:
-    _, _, _, _, comments_count, important_from_comments = _comment_stats(
-        comment_summaries
-    )
+    survey_summaries: list[models.SurveySummary],
+    comment_summaries: list[models.CommentSummary],
+) -> dict[str, int]:
+    _, _, _, _, comments_count, important_from_comments = _comment_stats(comment_summaries)
     return {
         "responses": sum(int(s.response_count or 0) for s in survey_summaries),
         "comments": comments_count,
@@ -196,34 +196,24 @@ def _aggregate_counts(
 
 def _load_summaries(
     db: Session,
-    batch_ids: List[int],
-) -> Tuple[
-    Dict[int, models.SurveySummary],
-    Dict[int, List[models.CommentSummary]],
+    batch_ids: list[int],
+) -> tuple[
+    dict[int, models.SurveySummary],
+    dict[int, list[models.CommentSummary]],
 ]:
-    survey_rows = (
-        db.query(models.SurveySummary)
-        .filter(models.SurveySummary.survey_batch_id.in_(batch_ids))
-        .all()
-    )
-    comment_rows = (
-        db.query(models.CommentSummary)
-        .filter(models.CommentSummary.survey_batch_id.in_(batch_ids))
-        .all()
-    )
+    survey_rows = db.query(models.SurveySummary).filter(models.SurveySummary.survey_batch_id.in_(batch_ids)).all()
+    comment_rows = db.query(models.CommentSummary).filter(models.CommentSummary.survey_batch_id.in_(batch_ids)).all()
     # analysis_version カラム廃止に伴い、バッチID単位で集約する。
-    survey_map: Dict[int, models.SurveySummary] = {
-        row.survey_batch_id: row for row in survey_rows
-    }
-    comment_map: Dict[int, List[models.CommentSummary]] = {}
+    survey_map: dict[int, models.SurveySummary] = {row.survey_batch_id: row for row in survey_rows}
+    comment_map: dict[int, list[models.CommentSummary]] = {}
     for row in comment_rows:
         comment_map.setdefault(row.survey_batch_id, []).append(row)
     return survey_map, comment_map
 
 
 def _format_scores(
-    summary: Optional[models.SurveySummary],
-) -> Dict[str, Optional[float]]:
+    summary: models.SurveySummary | None,
+) -> dict[str, float | None]:
     if not summary:
         return {k: None for k in _SCORE_FIELD_MAP.keys()}
     result = {}
@@ -235,9 +225,9 @@ def _format_scores(
 
 @router.get("/dashboard/{lecture_id}/overview")
 def dashboard_overview(
+    db: Annotated[Session, Depends(get_db)],
     lecture_id: int,
-    version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
-    db: Session = Depends(get_db),
+    version: str | None = Query(default="final", enum=["final", "preliminary"]),
 ) -> dict:
     """講義のダッシュボード全体の集計値を返す（事前計算テーブルを使用）。"""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
@@ -254,7 +244,7 @@ def dashboard_overview(
         )
         .all()
     )
-    lecture_ids = [l.id for l in lectures]
+    lecture_ids = [lec.id for lec in lectures]
 
     batches = (
         db.query(models.SurveyBatch)
@@ -289,13 +279,8 @@ def dashboard_overview(
 
     survey_map, comment_map = _load_summaries(db, batch_ids)
 
-    survey_summaries = [
-        _pick_summary(b.id, version or "final", survey_map) for b in chosen_batches
-    ]
-    comment_summaries = [
-        _pick_comment_summary(b.id, version or "final", comment_map)
-        for b in chosen_batches
-    ]
+    survey_summaries = [_pick_summary(b.id, version or "final", survey_map) for b in chosen_batches]
+    comment_summaries = [_pick_comment_summary(b.id, version or "final", comment_map) for b in chosen_batches]
     survey_summaries = [s for s in survey_summaries if s]
     comment_summaries = [c for c in comment_summaries if c]
     flat_comment_rows = [row for rows in comment_summaries for row in rows]
@@ -315,9 +300,7 @@ def dashboard_overview(
     timeline = []
     timeline = []
     # lecture_on 順にソートするためにバッチから講義情報を参照
-    sorted_batches = sorted(
-        chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min
-    )
+    sorted_batches = sorted(chosen_batches, key=lambda b: b.lecture.lecture_on if b.lecture else date.min)
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
@@ -325,9 +308,7 @@ def dashboard_overview(
             {
                 "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
-                "nps": (
-                    float(summary.nps) if summary and summary.nps is not None else 0.0
-                ),
+                "nps": (float(summary.nps) if summary and summary.nps is not None else 0.0),
                 "response_count": summary.response_count if summary else 0,
                 "avg_overall_satisfaction": (
                     float(summary.avg_satisfaction_overall)
@@ -351,9 +332,9 @@ def dashboard_overview(
 
 @router.get("/dashboard/{lecture_id}/per_lecture")
 def dashboard_per_lecture(
+    db: Annotated[Session, Depends(get_db)],
     lecture_id: int,
-    version: Optional[str] = Query(default="final", enum=["final", "preliminary"]),
-    db: Session = Depends(get_db),
+    version: str | None = Query(default="final", enum=["final", "preliminary"]),
 ) -> dict:
     """講義番号ごとの詳細（スコア・NPS・感情/カテゴリ内訳）を返す。"""
     lecture = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
@@ -370,7 +351,7 @@ def dashboard_per_lecture(
         )
         .all()
     )
-    lecture_ids = [l.id for l in lectures]
+    lecture_ids = [lec.id for lec in lectures]
 
     batches = (
         db.query(models.SurveyBatch)
@@ -386,7 +367,7 @@ def dashboard_per_lecture(
     batch_ids = [b.id for _, b in chosen_sorted]
     survey_map, comment_map = _load_summaries(db, batch_ids)
 
-    lectures_payload: List[dict] = []
+    lectures_payload: list[dict] = []
     # lecture_on 順にソート
     sorted_batches = sorted(
         list(chosen.values()),
@@ -395,20 +376,14 @@ def dashboard_per_lecture(
 
     for batch in sorted_batches:
         summary = _pick_summary(batch.id, version or "final", survey_map)
-        comment_summary = _pick_comment_summary(
-            batch.id, version or "final", comment_map
-        )
+        comment_summary = _pick_comment_summary(batch.id, version or "final", comment_map)
         lectures_payload.append(
             {
                 "lecture_number": batch.lecture.session if batch.lecture else "",
                 "batch_id": batch.id,
                 "scores": _format_scores(summary),
                 "nps": {
-                    "score": (
-                        float(summary.nps)
-                        if summary and summary.nps is not None
-                        else 0.0
-                    ),
+                    "score": (float(summary.nps) if summary and summary.nps is not None else 0.0),
                     "promoters": summary.promoter_count if summary else 0,
                     "passives": summary.passive_count if summary else 0,
                     "detractors": summary.detractor_count if summary else 0,

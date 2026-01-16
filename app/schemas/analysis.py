@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
@@ -58,7 +57,7 @@ class LectureInfoItem(BaseModel):
     session: str
     lecture_date: str
     instructor_name: str
-    description: Optional[str] = None
+    description: str | None = None
 
 
 # --- Trends Response ---
@@ -68,13 +67,13 @@ class ResponseTrendItem(BaseModel):
     session: str
     response_count: int
     retention_rate: float
-    breakdown: Optional[Dict[str, int]] = None
+    breakdown: dict[str, int] | None = None
 
 
 class ParticipationTrendItem(BaseModel):
     session: str
-    zoom_participants: Optional[int] = None
-    recording_views: Optional[int] = None
+    zoom_participants: int | None = None
+    recording_views: int | None = None
 
 
 class NPSSummary(BaseModel):
@@ -90,14 +89,14 @@ class NPSSummary(BaseModel):
 
 class ScoreTrendItem(BaseModel):
     session: str
-    scores: Dict[str, float]
+    scores: dict[str, float]
 
 
 class OverallAverages(BaseModel):
-    overall: Dict[str, object]  # {label: str, items: List[ScoreItem]}
-    content: Dict[str, object]
-    instructor: Dict[str, object]
-    self_evaluation: Dict[str, object]
+    overall: dict[str, object]  # {label: str, items: List[ScoreItem]}
+    content: dict[str, object]
+    instructor: dict[str, object]
+    self_evaluation: dict[str, object]
 
 
 class SentimentSummaryItem(BaseModel):
@@ -112,15 +111,15 @@ class CategorySummaryItem(BaseModel):
 
 
 class OverallTrendsResponse(BaseModel):
-    lecture_info: List[LectureInfoItem]
-    response_trends: List[ResponseTrendItem]
-    participation_trends: List[ParticipationTrendItem]
+    lecture_info: list[LectureInfoItem]
+    response_trends: list[ResponseTrendItem]
+    participation_trends: list[ParticipationTrendItem]
     nps_summary: NPSSummary
-    nps_trends: List[NPSTrendItem]
-    score_trends: List[ScoreTrendItem]
+    nps_trends: list[NPSTrendItem]
+    score_trends: list[ScoreTrendItem]
     overall_averages: OverallAverages
-    sentiment_summary: List[SentimentSummaryItem]
-    category_summary: List[CategorySummaryItem]
+    sentiment_summary: list[SentimentSummaryItem]
+    category_summary: list[CategorySummaryItem]
 
 
 # --- Comparison Response ---
@@ -132,7 +131,7 @@ class YearMetrics(BaseModel):
     total_responses: int
     session_count: int
     average_nps: float
-    average_scores: Dict[str, float]
+    average_scores: dict[str, float]
 
 
 class ScoreComparisonItem(BaseModel):
@@ -146,8 +145,8 @@ class ScoreComparisonItem(BaseModel):
 class YearComparisonResponse(BaseModel):
     current: YearMetrics
     comparison: YearMetrics
-    nps_trends: Dict[str, List[NPSTrendItem]]  # {current: [], comparison: []}
-    score_comparison: List[ScoreComparisonItem]
+    nps_trends: dict[str, list[NPSTrendItem]]  # {current: [], comparison: []}
+    score_comparison: list[ScoreComparisonItem]
 
 
 # --- Lecture Analysis Response ---
@@ -158,7 +157,7 @@ class SessionLectureInfo(BaseModel):
     session: str
     lecture_date: str
     instructor_name: str
-    description: Optional[str] = None
+    description: str | None = None
     response_count: int
 
 
@@ -185,35 +184,35 @@ class RatingDistribution(BaseModel):
 
 
 class ScoreDistributions(BaseModel):
-    overall_satisfaction: List[RatingDistribution]
-    learning_amount: List[RatingDistribution]
-    comprehension: List[RatingDistribution]
-    operations: List[RatingDistribution]
-    instructor_satisfaction: List[RatingDistribution]
-    time_management: List[RatingDistribution]
-    question_handling: List[RatingDistribution]
-    speaking_style: List[RatingDistribution]
-    preparation: List[RatingDistribution]
-    motivation: List[RatingDistribution]
-    future_application: List[RatingDistribution]
+    overall_satisfaction: list[RatingDistribution]
+    learning_amount: list[RatingDistribution]
+    comprehension: list[RatingDistribution]
+    operations: list[RatingDistribution]
+    instructor_satisfaction: list[RatingDistribution]
+    time_management: list[RatingDistribution]
+    question_handling: list[RatingDistribution]
+    speaking_style: list[RatingDistribution]
+    preparation: list[RatingDistribution]
+    motivation: list[RatingDistribution]
+    future_application: list[RatingDistribution]
 
 
 class CommentItem(BaseModel):
     id: str
     text: str
-    sentiment: Optional[Sentiment] = None
-    category: Optional[CommentCategory] = None
-    priority: Optional[str] = None
-    fix_difficulty: Optional[str] = None
-    risk_level: Optional[str] = None
+    sentiment: Sentiment | None = None
+    category: CommentCategory | None = None
+    priority: str | None = None
+    fix_difficulty: str | None = None
+    risk_level: str | None = None
     question_type: QuestionType
 
 
 class SessionAnalysisResponse(BaseModel):
     lecture_info: SessionLectureInfo
     nps: SessionNPS
-    average_scores: List[AverageScoreItem]
+    average_scores: list[AverageScoreItem]
     score_distributions: ScoreDistributions
-    fix_difficulty: Dict[str, int]
-    priority_comments: List[CommentItem]
-    comments: List[CommentItem]
+    fix_difficulty: dict[str, int]
+    priority_comments: list[CommentItem]
+    comments: list[CommentItem]

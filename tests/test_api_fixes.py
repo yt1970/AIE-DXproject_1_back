@@ -1,4 +1,3 @@
-import os
 from datetime import date, datetime
 from pathlib import Path
 
@@ -7,7 +6,6 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core import settings as settings_module
 from app.db import models
 from app.db import session as session_module
 from app.main import app
@@ -18,16 +16,12 @@ def fixture_db_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     db_path = tmp_path / "test.sqlite3"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
 
-    engine = create_engine(
-        f"sqlite:///{db_path}", connect_args={"check_same_thread": False}
-    )
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     models.Base.metadata.create_all(engine)
 
     monkeypatch.setattr(session_module, "engine", engine, raising=False)
-    monkeypatch.setattr(
-        session_module, "SessionLocal", TestingSessionLocal, raising=False
-    )
+    monkeypatch.setattr(session_module, "SessionLocal", TestingSessionLocal, raising=False)
 
     db = TestingSessionLocal()
     try:
@@ -47,9 +41,7 @@ def fixture_client(db_session):
     app.dependency_overrides.clear()
 
 
-def test_get_lecture_analysis_incomplete_scores(
-    client: TestClient, db_session: Session
-):
+def test_get_lecture_analysis_incomplete_scores(client: TestClient, db_session: Session):
     # Setup data
     lecture = models.Lecture(
         academic_year=2024,
@@ -64,9 +56,7 @@ def test_get_lecture_analysis_incomplete_scores(
     db_session.commit()
     db_session.refresh(lecture)
 
-    batch = models.SurveyBatch(
-        lecture_id=lecture.id, batch_type="confirmed", uploaded_at=datetime.now()
-    )
+    batch = models.SurveyBatch(lecture_id=lecture.id, batch_type="confirmed", uploaded_at=datetime.now())
     db_session.add(batch)
     db_session.commit()
     db_session.refresh(batch)

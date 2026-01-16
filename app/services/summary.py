@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Dict, Optional, Tuple
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import Session
@@ -18,7 +17,7 @@ def compute_and_upsert_summaries(
     version: str = "preliminary",
     student_attribute: str | None = None,
     nps_scale: int = 10,
-) -> Tuple[models.SurveySummary, Dict[str, int]]:
+) -> tuple[models.SurveySummary, dict[str, int]]:
     """
     サーベイバッチの集計を計算し、SurveySummary/CommentSummaryをアップサートする。
     """
@@ -45,12 +44,8 @@ def compute_and_upsert_summaries(
         nps_scale,
         student_attribute=student_attribute,
     )
-    comment_counts = _refresh_comment_summary(
-        db, survey_batch.id, version, student_attribute=student_attribute
-    )
-    _populate_score_distributions(
-        db, survey_batch.id, student_attribute=student_attribute
-    )
+    comment_counts = _refresh_comment_summary(db, survey_batch.id, version, student_attribute=student_attribute)
+    _populate_score_distributions(db, survey_batch.id, student_attribute=student_attribute)
     # サマリー間でカウントを揃える
     # Note: comments_count fields removed from model, counts tracked in comment_summaries table
 
@@ -90,24 +85,18 @@ def _populate_survey_summary(
             func.count(models.SurveyResponse.id),
         )
         .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
-        .filter(
-            models.SurveyResponse.student_attribute == student_attribute
-            if student_attribute
-            else True
-        )
+        .filter(models.SurveyResponse.student_attribute == student_attribute if student_attribute else True)
         .one()
     )
 
-    for (field_name, _), value in zip(score_fields.items(), aggregates):
+    for (field_name, _), value in zip(score_fields.items(), aggregates[:-1], strict=True):
         setattr(summary, field_name, _maybe_round(value))
 
     responses_count = aggregates[-1]
     summary.response_count = int(responses_count) if responses_count is not None else 0
 
     # NPSの計算
-    nps_breakdown = _nps_breakdown_from_db(
-        db, survey_batch_id=survey_batch_id, nps_scale=nps_scale
-    )
+    nps_breakdown = _nps_breakdown_from_db(db, survey_batch_id=survey_batch_id, nps_scale=nps_scale)
     summary.nps = nps_breakdown["score"]
     summary.promoter_count = nps_breakdown["promoters"]
     summary.passive_count = nps_breakdown["passives"]
@@ -123,7 +112,7 @@ def _refresh_comment_summary(
     survey_batch_id: int,
     version: str,
     student_attribute: str | None = None,
-) -> Dict[str, int]:
+) -> dict[str, int]:
     attr = student_attribute or "ALL"
     db.query(models.CommentSummary).filter(
         models.CommentSummary.survey_batch_id == survey_batch_id,
@@ -293,10 +282,7 @@ def _refresh_comment_summary(
         "operations": int(aggregates.category_operations or 0),
     }
     category_counts["other"] = max(
-        total_comments
-        - category_counts["content"]
-        - category_counts["materials"]
-        - category_counts["operations"],
+        total_comments - category_counts["content"] - category_counts["materials"] - category_counts["operations"],
         0,
     )
     priority_counts = {
@@ -363,9 +349,7 @@ def _refresh_comment_summary(
     }
 
 
-def _populate_score_distributions(
-    db: Session, survey_batch_id: int, student_attribute: str | None = None
-) -> None:
+def _populate_score_distributions(db: Session, survey_batch_id: int, student_attribute: str | None = None) -> None:
     """スコア分布をscore_distributionに保存する。既存データは同条件で削除。"""
     if not hasattr(models, "ScoreDistribution"):
         return
@@ -390,13 +374,9 @@ def _populate_score_distributions(
         models.ScoreDistribution.student_attribute == (student_attribute or "ALL"),
     ).delete(synchronize_session=False)
 
-    base_query = db.query(models.SurveyResponse).filter(
-        models.SurveyResponse.survey_batch_id == survey_batch_id
-    )
+    base_query = db.query(models.SurveyResponse).filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
     if student_attribute:
-        base_query = base_query.filter(
-            models.SurveyResponse.student_attribute == student_attribute
-        )
+        base_query = base_query.filter(models.SurveyResponse.student_attribute == student_attribute)
 
     for col_name in score_columns:
         col = getattr(models.SurveyResponse, col_name, None)
@@ -406,11 +386,7 @@ def _populate_score_distributions(
             db.query(col.label("score_value"), func.count(1).label("count"))
             .filter(col.isnot(None))
             .filter(models.SurveyResponse.survey_batch_id == survey_batch_id)
-            .filter(
-                models.SurveyResponse.student_attribute == student_attribute
-                if student_attribute
-                else True
-            )
+            .filter(models.SurveyResponse.student_attribute == student_attribute if student_attribute else True)
             .group_by(col)
             .all()
         )
@@ -453,9 +429,7 @@ def _nps_breakdown_from_scores(
     return _nps_breakdown_from_counts(promoters, passives, detractors, total)
 
 
-def _nps_breakdown_from_db(
-    db: Session, survey_batch_id: int, *, nps_scale: int
-) -> dict:
+def _nps_breakdown_from_db(db: Session, survey_batch_id: int, *, nps_scale: int) -> dict:
     score_column = models.SurveyResponse.score_recommend_friend
     if nps_scale == 10:
         promoters_case = case((score_column.between(9, 10), 1), else_=0)
@@ -481,9 +455,7 @@ def _nps_breakdown_from_db(
     return _nps_breakdown_from_counts(promoters, passives, detractors, total)
 
 
-def _nps_breakdown_from_counts(
-    promoters: int, passives: int, detractors: int, total: int
-) -> dict:
+def _nps_breakdown_from_counts(promoters: int, passives: int, detractors: int, total: int) -> dict:
     if not total:
         return {
             "score": 0.0,
@@ -502,7 +474,7 @@ def _nps_breakdown_from_counts(
     }
 
 
-def _maybe_round(value: Optional[float]) -> Optional[float]:
+def _maybe_round(value: float | None) -> float | None:
     if value is None:
         return None
     return round(float(value), 2)

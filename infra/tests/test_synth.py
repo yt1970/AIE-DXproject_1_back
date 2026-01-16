@@ -40,9 +40,7 @@ def test_stack_synthesizes() -> None:
                                         "Condition": assertions.Match.object_like(
                                             {
                                                 "StringEquals": assertions.Match.object_like(
-                                                    {
-                                                        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-                                                    }
+                                                    {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"}
                                                 )
                                             }
                                         )

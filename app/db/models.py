@@ -7,7 +7,6 @@ from sqlalchemy import (
     Column,
     Date,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
@@ -90,9 +89,7 @@ class SurveyBatch(Base):
         autoincrement=True,
     )
     lecture_id = Column(Integer, ForeignKey("lectures.id"), nullable=False)
-    batch_type = Column(
-        String(20), nullable=False, default="preliminary"
-    )  # 'preliminary' or 'confirmed'
+    batch_type = Column(String(20), nullable=False, default="preliminary")  # 'preliminary' or 'confirmed'
     zoom_participants = Column(Integer)
     recording_views = Column(Integer)
     uploaded_at = Column(DateTime, server_default=func.now())
@@ -101,9 +98,7 @@ class SurveyBatch(Base):
     lecture = relationship("Lecture", back_populates="survey_batches")
     survey_responses = relationship("SurveyResponse", back_populates="survey_batch")
     survey_summaries = relationship("SurveySummary", back_populates="survey_batch")
-    score_distributions = relationship(
-        "ScoreDistribution", back_populates="survey_batch"
-    )
+    score_distributions = relationship("ScoreDistribution", back_populates="survey_batch")
     comment_summaries = relationship("CommentSummary", back_populates="survey_batch")
 
 
@@ -115,9 +110,7 @@ class SurveyResponse(Base):
         primary_key=True,
         autoincrement=True,
     )
-    survey_batch_id = Column(
-        BigInteger, ForeignKey("survey_batches.id"), nullable=False
-    )
+    survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     account_id = Column(String(255), nullable=False)
     student_attribute = Column(String(50), nullable=False)
 
@@ -156,9 +149,7 @@ class ResponseComment(Base):
     llm_sentiment_type = Column(String(20))  # positive, neutral, negative
     llm_category = Column(String(50))  # content, material, instructor, operation, other
     llm_priority = Column(String(10))  # high, medium, low
-    llm_fix_difficulty = Column(
-        String(10)
-    )  # easy, hard, none (NULL if LLM returns other values)
+    llm_fix_difficulty = Column(String(10))  # easy, hard, none (NULL if LLM returns other values)
     llm_is_abusive = Column(Boolean, default=False)
     is_analyzed = Column(Boolean, default=False)
 
@@ -174,9 +165,7 @@ class SurveySummary(Base):
         primary_key=True,
         autoincrement=True,
     )
-    survey_batch_id = Column(
-        BigInteger, ForeignKey("survey_batches.id"), nullable=False
-    )
+    survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
     response_count = Column(Integer, nullable=False)
 
@@ -212,9 +201,7 @@ class ScoreDistribution(Base):
         primary_key=True,
         autoincrement=True,
     )
-    survey_batch_id = Column(
-        BigInteger, ForeignKey("survey_batches.id"), nullable=False
-    )
+    survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
     question_key = Column(String(50), nullable=False)
     score_value = Column(Integer, nullable=False)
@@ -233,9 +220,7 @@ class CommentSummary(Base):
         primary_key=True,
         autoincrement=True,
     )
-    survey_batch_id = Column(
-        BigInteger, ForeignKey("survey_batches.id"), nullable=False
-    )
+    survey_batch_id = Column(BigInteger, ForeignKey("survey_batches.id"), nullable=False)
     student_attribute = Column(String(50), nullable=False)
     analysis_type = Column(String(20), nullable=False)  # sentiment/category
     label = Column(String(50), nullable=False)

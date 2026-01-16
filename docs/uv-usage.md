@@ -1,4 +1,4 @@
-# uv 開発ガイド
+# uvの使用方法
 
 Rust製の高速なPythonパッケージマネージャーである **uv** の基本的な使い方と運用フローについて説明します。
 
@@ -29,27 +29,18 @@ uv python pin 3.13
 
 ## 3. パッケージの管理
 
-### 既存の requirements.txt からの移行
-
-```bash
-# 1. 本番用パッケージの追加
-uv add -r requirements.txt
-
-# 2. 開発用パッケージの追加
-uv add --dev -r requirements-dev.txt
-```
-
-### 個別の追加・削除
-
 ```bash
 # パッケージの追加
 uv add requests
 
 # 開発用（テストツール・フォーマッタなど）として追加
-uv add --dev pytest black isort
+uv add --dev pytest ruff
 
 # パッケージの削除
 uv remove requests
+
+# 開発用パッケージの削除
+uv remove --group dev pytest
 ```
 
 ## 4. プログラムの実行と同期

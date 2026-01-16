@@ -1,9 +1,6 @@
-# app/api/upload.py
-
-import json
 import logging
 from datetime import UTC, date, datetime
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
@@ -15,9 +12,7 @@ from fastapi import (
     UploadFile,
     status,
 )
-from pydantic import BaseModel, TypeAdapter, ValidationError
-from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
+from pydantic import TypeAdapter
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -26,15 +21,12 @@ from app.schemas.comment import (
     BatchSearchItem,
     BatchSearchResponse,
     DeleteUploadResponse,
-    DuplicateCheckResponse,
     UploadRequestMetadata,
     UploadResponse,
 )
 from app.services import StorageError, get_storage_client
 from app.services.summary import compute_and_upsert_summaries
 from app.services.upload_pipeline import (
-    CsvValidationError,
-    build_storage_path,
     validate_csv_or_raise,
 )
 from app.workers.tasks import process_uploaded_file
@@ -56,10 +48,10 @@ def _derive_academic_year(d: date) -> int:
 
 @router.get("/surveys/batches/search", response_model=BatchSearchResponse)
 def search_batches(
+    db: Annotated[Session, Depends(get_db)],
     course_name: str = Query(..., description="講座名"),
     academic_year: int = Query(..., description="年度"),
     term: str = Query(..., description="期間"),
-    db: Session = Depends(get_db),
 ) -> BatchSearchResponse:
     """
     削除対象のバッチを検索する。
@@ -78,7 +70,7 @@ def search_batches(
     if not lectures:
         return BatchSearchResponse(batches=[])
 
-    lecture_ids = [l.id for l in lectures]
+    lecture_ids = [lec.id for lec in lectures]
 
     batches = (
         db.query(models.SurveyBatch)
@@ -91,7 +83,7 @@ def search_batches(
     items = []
     for b in batches:
         # Find corresponding lecture
-        lec = next((l for l in lectures if l.id == b.lecture_id), None)
+        lec = next((lec for lec in lectures if lec.id == b.lecture_id), None)
         if not lec:
             continue
 
@@ -112,54 +104,48 @@ def search_batches(
 @router.delete("/surveys/batches/{batch_id}", response_model=DeleteUploadResponse)
 def delete_survey_batch(
     batch_id: int,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> DeleteUploadResponse:
     """
     特定の講義回・分析タイプのデータを削除する。
     """
-    survey_batch = (
-        db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
-    )
+    survey_batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == batch_id).first()
     if not survey_batch:
-        raise HTTPException(
-            status_code=404, detail=f"Batch with id {batch_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Batch with id {batch_id} not found")
 
     # Check if processing
     # Assuming if summary exists, it's done. If not, it might be processing.
     # But for deletion, we might want to allow deleting stuck jobs too?
     # API def says "Delete specific batch".
 
-    removed_comments = 0
+    # removed_comments = 0
     removed_survey_responses = 0
 
     # Delete related data
-    removed_comments = (
-        db.query(models.ResponseComment)
-        .filter(
-            models.ResponseComment.response_id.in_(
-                db.query(models.SurveyResponse.id).filter(
-                    models.SurveyResponse.survey_batch_id == batch_id
-                )
-            )
-        )
-        .delete(synchronize_session=False)
-    )
+    # removed_comments = (
+    #     db.query(models.ResponseComment)
+    #     .filter(
+    #         models.ResponseComment.response_id.in_(
+    #             db.query(models.SurveyResponse.id).filter(models.SurveyResponse.survey_batch_id == batch_id)
+    #         )
+    #     )
+    #     .delete(synchronize_session=False)
+    # )
     removed_survey_responses = (
         db.query(models.SurveyResponse)
         .filter(models.SurveyResponse.survey_batch_id == batch_id)
         .delete(synchronize_session=False)
     )
 
-    db.query(models.SurveySummary).filter(
-        models.SurveySummary.survey_batch_id == batch_id
-    ).delete(synchronize_session=False)
-    db.query(models.CommentSummary).filter(
-        models.CommentSummary.survey_batch_id == batch_id
-    ).delete(synchronize_session=False)
-    db.query(models.ScoreDistribution).filter(
-        models.ScoreDistribution.survey_batch_id == batch_id
-    ).delete(synchronize_session=False)
+    db.query(models.SurveySummary).filter(models.SurveySummary.survey_batch_id == batch_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.CommentSummary).filter(models.CommentSummary.survey_batch_id == batch_id).delete(
+        synchronize_session=False
+    )
+    db.query(models.ScoreDistribution).filter(models.ScoreDistribution.survey_batch_id == batch_id).delete(
+        synchronize_session=False
+    )
 
     db.delete(survey_batch)
     db.commit()
@@ -195,6 +181,7 @@ def delete_survey_batch(
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def upload_survey_data(
+    db: Annotated[Session, Depends(get_db)],
     file: Annotated[UploadFile, File()],
     course_name: Annotated[str, Form()],
     academic_year: Annotated[int, Form()],
@@ -203,10 +190,9 @@ async def upload_survey_data(
     lecture_date: Annotated[date, Form()],
     instructor_name: Annotated[str, Form()],
     batch_type: Annotated[str, Form()],
-    description: Annotated[Optional[str], Form()] = None,
-    zoom_participants: Annotated[Optional[int], Form()] = None,
-    recording_views: Annotated[Optional[int], Form()] = None,
-    db: Session = Depends(get_db),
+    description: Annotated[str | None, Form()] = None,
+    zoom_participants: Annotated[int | None, Form()] = None,
+    recording_views: Annotated[int | None, Form()] = None,
 ) -> UploadResponse:
     """
     Excelファイルをアップロードし、アンケートデータを登録する。
@@ -222,7 +208,7 @@ async def upload_survey_data(
     try:
         content_bytes = await file.read()
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=f"Failed to read file: {exc}")
+        raise HTTPException(status_code=400, detail=f"Failed to read file: {exc}") from None
 
     if not content_bytes:
         raise HTTPException(status_code=400, detail="File is empty")
@@ -321,7 +307,7 @@ async def upload_survey_data(
     except Exception:
         db.delete(new_batch)
         db.commit()
-        raise HTTPException(status_code=500, detail="Failed to enqueue task")
+        raise HTTPException(status_code=500, detail="Failed to enqueue task") from None
 
     return UploadResponse(
         success=True,
@@ -341,20 +327,14 @@ async def upload_survey_data(
 @router.post("/uploads/{survey_batch_id}/finalize")
 def finalize_analysis(
     survey_batch_id: int,
-    db: Session = Depends(get_db),
+    db: Annotated[Session, Depends(get_db)],
 ) -> dict:
     """
     速報版(preliminary)のコメントを確定版(confirmed)として固定化する。
     """
-    survey_batch = (
-        db.query(models.SurveyBatch)
-        .filter(models.SurveyBatch.id == survey_batch_id)
-        .first()
-    )
+    survey_batch = db.query(models.SurveyBatch).filter(models.SurveyBatch.id == survey_batch_id).first()
     if not survey_batch:
-        raise HTTPException(
-            status_code=404, detail=f"Batch with id {survey_batch_id} not found"
-        )
+        raise HTTPException(status_code=404, detail=f"Batch with id {survey_batch_id} not found")
 
     # バッチタイプを確定版に更新
     survey_batch.batch_type = "confirmed"

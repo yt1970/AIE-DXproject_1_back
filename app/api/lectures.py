@@ -1,29 +1,29 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import List, Optional
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
+from app.schemas.analysis import (
+    AverageScoreItem,
+    CommentItem,
+    RatingDistribution,
+    ScoreDistributions,
+    SessionAnalysisResponse,
+    SessionLectureInfo,
+    SessionNPS,
+)
 from app.schemas.course import LectureDetailResponse, ScoreDistributionSchema
 
 router = APIRouter()
 
 
-def _normalize_text(value: Optional[str]) -> Optional[str]:
-    if value is None:
-        return None
-    return value.strip()
-
-
 @router.get("/lectures/{lecture_id}", response_model=LectureDetailResponse)
-def get_lecture_detail(
-    lecture_id: int, db: Session = Depends(get_db)
-) -> LectureDetailResponse:
+def get_lecture_detail(lecture_id: int, db: Annotated[Session, Depends(get_db)]) -> LectureDetailResponse:
     """講義詳細を返す（ScoreDistributionを含む）。"""
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
@@ -51,32 +51,16 @@ def get_lecture_detail(
         lecture_on=lec.lecture_on,
         description=lec.description,
         updated_at=lec.updated_at,
-        score_distributions=[
-            ScoreDistributionSchema.model_validate(d) for d in distributions
-        ],
+        score_distributions=[ScoreDistributionSchema.model_validate(d) for d in distributions],
     )
-
-
-from app.schemas.analysis import (
-    AverageScoreItem,
-    CommentCategory,
-    CommentItem,
-    QuestionType,
-    RatingDistribution,
-    ScoreDistributions,
-    Sentiment,
-    SessionAnalysisResponse,
-    SessionLectureInfo,
-    SessionNPS,
-)
 
 
 @router.get("/lectures/{lecture_id}/analysis", response_model=SessionAnalysisResponse)
 def get_lecture_analysis(
+    db: Annotated[Session, Depends(get_db)],
     lecture_id: int,
     batch_type: str = Query(..., description="preliminary/confirmed"),
     student_attribute: str = Query("all", description="受講生属性フィルタ"),
-    db: Session = Depends(get_db),
 ) -> SessionAnalysisResponse:
     """
     特定の講義回の詳細分析データを取得する。
@@ -160,9 +144,7 @@ def get_lecture_analysis(
     # Map distributions
     dist_map = defaultdict(list)
     for d in dists:
-        dist_map[d.question_key].append(
-            RatingDistribution(rating=d.score_value, count=d.count)
-        )
+        dist_map[d.question_key].append(RatingDistribution(rating=d.score_value, count=d.count))
 
     # Fetch Comments (filtering by attribute is complex if not stored in comment summary,
     # but here we fetch raw comments or summaries? API says "comments".
@@ -178,17 +160,14 @@ def get_lecture_analysis(
         .filter(models.SurveyResponse.survey_batch_id == batch.id)
     )
     if student_attribute != "all":
-        q_comments = q_comments.filter(
-            models.SurveyResponse.student_attribute == student_attribute
-        )
+        q_comments = q_comments.filter(models.SurveyResponse.student_attribute == student_attribute)
 
     raw_comments = q_comments.all()
 
     comment_items = []
     priority_items = []
 
-    for c, r in raw_comments:
-
+    for c, _ in raw_comments:
         item = CommentItem(
             id=str(c.id),
             text=c.comment_text,

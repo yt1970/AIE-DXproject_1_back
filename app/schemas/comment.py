@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field
 
@@ -18,10 +18,10 @@ class UploadRequestMetadata(BaseModel):
     course_name: str
     lecture_on: date  # 日付型
     lecture_number: int
-    lecture_id: Optional[int] = None
+    lecture_id: int | None = None
 
     # 誰がアップロードしたかの情報（任意）
-    uploader_id: Optional[int] = None
+    uploader_id: int | None = None
 
 
 # (出力) ジョブ状態確認の応答スキーマ
@@ -40,8 +40,8 @@ class JobStatusResponse(BaseModel):
     job_id: str
     status: str  # 'queued' | 'processing' | 'completed' | 'failed'
     created_at: datetime
-    result: Optional[JobResult] = None
-    error: Optional[JobError] = None
+    result: JobResult | None = None
+    error: JobError | None = None
 
 
 # (出力) 分析結果（コメント一覧）のスキーマ
@@ -49,49 +49,47 @@ class CommentAnalysisSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     # ユーザー情報をCommentモデルから直接取得する
-    question_type: Optional[str] = None
-    priority: Optional[str] = Field(default=None, validation_alias="llm_priority")
-    fix_difficulty: Optional[str] = Field(
-        default=None, validation_alias="llm_fix_difficulty"
-    )
+    question_type: str | None = None
+    priority: str | None = Field(default=None, validation_alias="llm_priority")
+    fix_difficulty: str | None = Field(default=None, validation_alias="llm_fix_difficulty")
     comment_text: str
 
-    llm_category: Optional[str] = None
-    llm_sentiment_type: Optional[str] = None
-    llm_priority: Optional[str] = None
+    llm_category: str | None = None
+    llm_sentiment_type: str | None = None
+    llm_priority: str | None = None
     # llm_fix_difficulty is already aliased above but we can keep explicit field too or just rely on above
     # response model usually uses the field name.
     # If I want `priority` in JSON, I should name field `priority`.
-    llm_fix_difficulty: Optional[str] = None
-    llm_is_abusive: Optional[bool] = None
-    is_analyzed: Optional[bool] = None
+    llm_fix_difficulty: str | None = None
+    llm_is_abusive: bool | None = None
+    is_analyzed: bool | None = None
 
     @computed_field
     @property
-    def score_satisfaction_overall(self) -> Optional[int]:
+    def score_satisfaction_overall(self) -> int | None:
         sr = self.response
         return sr.score_satisfaction_overall if sr else None
 
     @computed_field
     @property
-    def score_satisfaction_content_understanding(self) -> Optional[int]:
+    def score_satisfaction_content_understanding(self) -> int | None:
         sr = self.response
         return sr.score_content_understanding if sr else None
 
     @computed_field
     @property
-    def score_satisfaction_instructor_overall(self) -> Optional[int]:
+    def score_satisfaction_instructor_overall(self) -> int | None:
         sr = self.response
         return sr.score_instructor_overall if sr else None
 
     # responseリレーションを読み込むが、JSONには出力しないフィールド
-    response: Optional[Any] = Field(default=None, exclude=True)
+    response: Any | None = Field(default=None, exclude=True)
 
 
 # (出力) 講義重複チェックの応答スキーマ
 class DuplicateCheckResponse(BaseModel):
     exists: bool
-    survey_batch_id: Optional[int] = None
+    survey_batch_id: int | None = None
 
 
 # (出力) アップロード削除APIの応答スキーマ
@@ -104,13 +102,13 @@ class DeleteUploadResponse(BaseModel):
 
 # (入力/出力) 講義メトリクス（手動入力）
 class LectureMetricsPayload(BaseModel):
-    zoom_participants: Optional[int] = None
-    recording_views: Optional[int] = None
+    zoom_participants: int | None = None
+    recording_views: int | None = None
 
 
 class LectureMetricsResponse(LectureMetricsPayload):
     survey_batch_id: int
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 
 # (出力) 削除対象バッチ検索の応答スキーマ

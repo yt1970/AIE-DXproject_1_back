@@ -6,7 +6,6 @@ from pydantic import BaseModel
 
 from app.core.settings import get_settings
 
-
 router = APIRouter()
 
 ALB_AUTH_COOKIE_NAMES = [
@@ -55,22 +54,20 @@ def login_redirect():
 def logout():
     settings = get_settings()
 
-    if not all([
-        settings.cognito.domain,
-        settings.cognito.client_id,
-        settings.cognito.logout_redirect_uri,
-    ]):
-        raise HTTPException(
-            status_code=500, detail="Cognito settings not configured"
-        )
+    if not all(
+        [
+            settings.cognito.domain,
+            settings.cognito.client_id,
+            settings.cognito.logout_redirect_uri,
+        ]
+    ):
+        raise HTTPException(status_code=500, detail="Cognito settings not configured")
 
     params = {
         "client_id": settings.cognito.client_id,
         "logout_uri": settings.cognito.logout_redirect_uri,
     }
-    cognito_logout_url = (
-        f"https://{settings.cognito.domain}/logout?{urlencode(params)}"
-    )
+    cognito_logout_url = f"https://{settings.cognito.domain}/logout?{urlencode(params)}"
 
     response = RedirectResponse(url=cognito_logout_url, status_code=302)
 
