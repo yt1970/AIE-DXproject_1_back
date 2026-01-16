@@ -1,6 +1,3 @@
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
-import os
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
@@ -11,10 +8,6 @@ from app.core.settings import get_settings
 
 
 router = APIRouter()
-
-COGNITO_DOMAIN = os.getenv("COGNITO_DOMAIN")
-COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
-LOGOUT_REDIRECT_URI = os.getenv("LOGOUT_REDIRECT_URI")
 
 ALB_AUTH_COOKIE_NAMES = [
     "AWSELBAuthSessionCookie",
@@ -46,9 +39,6 @@ def get_current_user(request: Request):
     )
 
 
-from app.core.settings import get_settings
-from fastapi.responses import RedirectResponse
-
 @router.get("/login", summary="Login Redirect")
 def login_redirect():
     """
@@ -61,18 +51,15 @@ def login_redirect():
     return RedirectResponse(url=target_url, status_code=302)
 
 
-# ------------------------------------------------------------------
-# ★ Logout Endpoint（prefix なし）
-# ------------------------------------------------------------------
-
 @router.get("/logout", tags=["Auth"])
 def logout():
+    settings = get_settings()
     params = {
-        "client_id": COGNITO_CLIENT_ID,
-        "logout_uri": LOGOUT_REDIRECT_URI,
+        "client_id": settings.cognito.client_id,
+        "logout_uri": settings.cognito.logout_redirect_uri,
     }
     cognito_logout_url = (
-        f"https://{COGNITO_DOMAIN}/logout?{urlencode(params)}"
+        f"https://{settings.cognito.domain}/logout?{urlencode(params)}"
     )
 
     response = RedirectResponse(url=cognito_logout_url, status_code=302)

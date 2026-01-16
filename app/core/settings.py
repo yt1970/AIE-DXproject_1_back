@@ -153,6 +153,19 @@ class CelerySettings(BaseSettings):
     task_max_retries: int = 3
 
 
+class CognitoSettings(BaseSettings):
+    """Cognito認証に関する設定。"""
+
+    model_config = SettingsConfigDict(
+        **COMMON_ENV_CONFIG,
+        env_prefix="COGNITO_",
+    )
+
+    domain: Optional[str] = None
+    client_id: Optional[str] = None
+    logout_redirect_uri: Optional[str] = None
+
+
 class AppSettings(BaseSettings):
     """アプリ全体の設定。機密情報は環境変数や .env から読み込む。"""
 
@@ -174,6 +187,7 @@ class AppSettings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     celery: CelerySettings = Field(default_factory=CelerySettings)
+    cognito: CognitoSettings = Field(default_factory=CognitoSettings)
 
     @property
     def aws_credentials(self) -> Dict[str, str]:
@@ -189,7 +203,3 @@ class AppSettings(BaseSettings):
 def get_settings() -> AppSettings:
     """アプリ設定をキャッシュ付きで取得する。"""
     return AppSettings()
-
-COGNITO_DOMAIN = os.getenv("COGNITO_DOMAIN")
-COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
-LOGOUT_REDIRECT_URI = os.getenv("LOGOUT_REDIRECT_URI")
