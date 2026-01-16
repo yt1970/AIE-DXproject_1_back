@@ -180,7 +180,7 @@ class AppSettings(BaseSettings):
         default="sqlite:///./app_dev.sqlite3", alias="DATABASE_URL"
     )
     frontend_url: str = Field(
-        default="http://localhost:3000", alias="FRONTEND_URL"
+        default="http://localhost:5173", alias="FRONTEND_URL"
     )
 
     aws: AWSSettings = Field(default_factory=AWSSettings)
