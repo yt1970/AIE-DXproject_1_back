@@ -1,0 +1,28 @@
+name: Ruff Check (Lint & Format)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  ruff-check:
+    name: Run Ruff Linter and Formatter
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Run Ruff Linter
+        uses: astral-sh/ruff-action@v3
+        with:
+          version-file: requirements-dev.txt
+          args: check
+
+      - name: Run Ruff Formatter
+        uses: astral-sh/ruff-action@v3
+        with:
+          version-file: requirements-dev.txt
+          args: format --check
