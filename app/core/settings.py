@@ -189,3 +189,7 @@ class AppSettings(BaseSettings):
 def get_settings() -> AppSettings:
     """アプリ設定をキャッシュ付きで取得する。"""
     return AppSettings()
+
+COGNITO_DOMAIN = os.getenv("COGNITO_DOMAIN")
+COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
+LOGOUT_REDIRECT_URI = os.getenv("LOGOUT_REDIRECT_URI")
