@@ -1,6 +1,6 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
@@ -54,6 +54,16 @@ def login_redirect():
 @router.get("/logout", tags=["Auth"])
 def logout():
     settings = get_settings()
+
+    if not all([
+        settings.cognito.domain,
+        settings.cognito.client_id,
+        settings.cognito.logout_redirect_uri,
+    ]):
+        raise HTTPException(
+            status_code=500, detail="Cognito settings not configured"
+        )
+
     params = {
         "client_id": settings.cognito.client_id,
         "logout_uri": settings.cognito.logout_redirect_uri,
