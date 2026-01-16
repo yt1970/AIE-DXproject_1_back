@@ -153,6 +153,19 @@ class CelerySettings(BaseSettings):
     task_max_retries: int = 3
 
 
+class CognitoSettings(BaseSettings):
+    """Cognito認証に関する設定。"""
+
+    model_config = SettingsConfigDict(
+        **COMMON_ENV_CONFIG,
+        env_prefix="COGNITO_",
+    )
+
+    domain: Optional[str] = None
+    client_id: Optional[str] = None
+    logout_redirect_uri: Optional[str] = None
+
+
 class AppSettings(BaseSettings):
     """アプリ全体の設定。機密情報は環境変数や .env から読み込む。"""
 
@@ -167,13 +180,14 @@ class AppSettings(BaseSettings):
         default="sqlite:///./app_dev.sqlite3", alias="DATABASE_URL"
     )
     frontend_url: str = Field(
-        default="http://localhost:3000", alias="FRONTEND_URL"
+        default="http://localhost:5173", alias="FRONTEND_URL"
     )
 
     aws: AWSSettings = Field(default_factory=AWSSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
     celery: CelerySettings = Field(default_factory=CelerySettings)
+    cognito: CognitoSettings = Field(default_factory=CognitoSettings)
 
     @property
     def aws_credentials(self) -> Dict[str, str]:

@@ -5,9 +5,12 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime
+from urllib.parse import urlencode
+import os
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.responses import RedirectResponse
 
 # --- 分割したルーターと設定関連をインポート ---
 from app.api import analysis, comments, courses, lectures, metrics, upload
@@ -19,7 +22,7 @@ settings = get_settings()
 
 
 # ----------------------------------------------------------------------
-# アプリケーションファクトリ (テストの容易性のために関数化)
+# アプリケーションファクトリ
 # ----------------------------------------------------------------------
 def create_app() -> FastAPI:
     """Creates and configures the FastAPI application instance."""
@@ -43,9 +46,7 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------------
     # Exception Handlers
     # ------------------------------------------------------------------
-    from fastapi import Request
     from fastapi.exceptions import RequestValidationError
-    from fastapi.responses import JSONResponse
     from starlette.exceptions import HTTPException as StarletteHTTPException
 
     @app.exception_handler(StarletteHTTPException)
@@ -102,32 +103,29 @@ def create_app() -> FastAPI:
         )
 
     # ------------------------------------------------------------------
-    # 1. Middleware
+    # Middleware
     # ------------------------------------------------------------------
     from app.core.middleware import AuthMiddleware
 
     app.add_middleware(AuthMiddleware, debug=config.debug)
 
     # ------------------------------------------------------------------
-    # 2. ヘルスチェックエンドポイント
+    # ヘルスチェック
     # ------------------------------------------------------------------
     @app.get("/health", tags=["System"])
     def health_check():
-        """
-        システムの稼働状況を確認するためのヘルスチェックエンドポイント。
-        """
         return JSONResponse(
             content={
                 "status": "ok",
                 "timestamp": datetime.now().isoformat(),
                 "app_name": app.title,
                 "environment": config.env,
-                # 実際にはDB接続やCeleryキューの状態チェックを追加
             }
         )
 
+
     # ------------------------------------------------------------------
-    # 3. ルーターの登録
+    # API Routers
     # ------------------------------------------------------------------
     app.include_router(upload.router, prefix="/api/v1", tags=["Upload"])
     app.include_router(analysis.router, prefix="/api/v1", tags=["Analysis"])
@@ -142,15 +140,13 @@ def create_app() -> FastAPI:
     app.include_router(common.router, prefix="/api/v1", tags=["Common"])
 
     from app.api import trends
-
     app.include_router(trends.router, prefix="/api/v1", tags=["Trends"])
 
     from app.api import dashboard
-
     app.include_router(dashboard.router, prefix="/api/v1", tags=["Dashboard"])
 
     return app
 
 
-# グローバルなアプリケーションインスタンスを作成
+# グローバルなアプリケーションインスタンス
 app = create_app()
