@@ -104,8 +104,13 @@ pip install -r requirements-dev.txt
 cp .env.example .env
 # .envを編集してLLM APIキーなどを設定
 
-# マイグレーション実行
+# マイグレーション実行（Alembic）
+# DBスキーマの変更を反映させるには以下のコマンドを実行する必要があります
+# 注意：Docker環境の場合は `docker compose exec api ...` のようにコンテナ内で実行してください
 alembic upgrade head
+
+# 新しいマイグレーションを作成する場合
+# alembic revision --autogenerate -m "変更内容のコメント"
 
 # 開発サーバー起動
 uvicorn app.main:app --reload

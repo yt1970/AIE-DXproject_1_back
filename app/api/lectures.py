@@ -65,6 +65,9 @@ def get_lecture_analysis(
     """
     特定の講義回の詳細分析データを取得する。
     """
+    # DB convention uses "ALL" for the aggregate summary
+    if student_attribute == "all":
+        student_attribute = "ALL"
     lec = db.query(models.Lecture).filter(models.Lecture.id == lecture_id).first()
     if not lec:
         raise HTTPException(status_code=404, detail="Lecture not found")
@@ -119,9 +122,7 @@ def get_lecture_analysis(
             fix_difficulty={},
             priority_comments=[],
             comments=[],
-        )
-
-    # Fetch Summary
+        )    
     summary = (
         db.query(models.SurveySummary)
         .filter(
@@ -178,7 +179,12 @@ def get_lecture_analysis(
             question_type=c.question_type,
         )
         comment_items.append(item)
-        if c.llm_priority == "high":
+        is_high_priority = c.llm_priority in ("high", "高")
+        
+        is_easy_fix = c.llm_fix_difficulty in ("easy", "容易")
+        is_negative = c.llm_sentiment_type in ("negative", "ネガティブ")
+        is_target_category = c.llm_category in ("operations", "materials", "運営", "講義資料")
+        if is_high_priority and is_easy_fix and is_negative and is_target_category:
             priority_items.append(item)
 
     # Calculate Fix Difficulty Counts
